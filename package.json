@@ -1,6 +1,6 @@
 {
   "name": "react-native-google-signin-modern",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Modern Google Sign-In for React Native using AndroidX Credential Manager and Google Identity Services",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
