@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Text, View, StyleSheet, Button, Alert } from 'react-native';
-import GoogleSignIn, { type GoogleSignInResult } from 'react-native-google-signin-modern';
+import GoogleSignIn, {
+  type GoogleSignInResult,
+} from 'react-native-google-signin-modern';
 
 export default function App() {
   const [user, setUser] = useState<GoogleSignInResult | null>(null);
@@ -31,7 +33,10 @@ export default function App() {
 
       const result = await GoogleSignIn.signIn();
       setUser(result);
-      Alert.alert('Success', `Welcome, ${result.user.name || result.user.email}!`);
+      Alert.alert(
+        'Success',
+        `Welcome, ${result.user.name || result.user.email}!`
+      );
     } catch (error) {
       console.error('Sign-in failed:', error);
       Alert.alert('Error', 'Sign-in failed. Please try again.');
@@ -52,7 +57,7 @@ export default function App() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Google Sign-In Example</Text>
-      
+
       {user ? (
         <View style={styles.userInfo}>
           <Text style={styles.text}>Welcome!</Text>
@@ -65,9 +70,9 @@ export default function App() {
           <Text style={styles.text}>
             {isConfigured ? 'Tap to sign in with Google' : 'Configuring...'}
           </Text>
-          <Button 
-            title="Sign In with Google" 
-            onPress={handleSignIn} 
+          <Button
+            title="Sign In with Google"
+            onPress={handleSignIn}
             disabled={!isConfigured}
           />
         </View>

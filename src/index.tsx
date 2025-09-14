@@ -4,9 +4,9 @@ export interface GoogleSignInResult {
   idToken: string;
   user: {
     id: string;
-    name?: string | null;
+    name: string | null;
     email: string;
-    photo?: string | null;
+    photo: string | null;
   };
 }
 
@@ -43,7 +43,18 @@ class GoogleSignIn {
     if (!this.isConfigured) {
       throw new Error('Google Sign-In not configured. Call configure() first.');
     }
-    return await GoogleSigninModern.signIn();
+    const nativeResult = await GoogleSigninModern.signIn();
+
+    // Normalize optional properties to ensure they are never undefined
+    return {
+      idToken: nativeResult.idToken,
+      user: {
+        id: nativeResult.user.id,
+        name: nativeResult.user.name ?? null,
+        email: nativeResult.user.email,
+        photo: nativeResult.user.photo ?? null,
+      },
+    };
   }
 
   /**
