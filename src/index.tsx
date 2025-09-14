@@ -4,9 +4,9 @@ export interface GoogleSignInResult {
   idToken: string;
   user: {
     id: string;
-    name: string | null;
+    name?: string | null;
     email: string;
-    photo: string | null;
+    photo?: string | null;
   };
 }
 

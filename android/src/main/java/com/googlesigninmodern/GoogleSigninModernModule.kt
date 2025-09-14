@@ -27,11 +27,16 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) : ReactCon
     private var webClientId: String? = null
     private var pendingPromise: Promise? = null
 
+    init {
+        Log.d(TAG, "GoogleSigninModernModule initialized")
+    }
+
     companion object {
         const val NAME = "GoogleSigninModern"
     }
 
     override fun getName(): String {
+        Log.d(TAG, "getName() called, returning: $NAME")
         return NAME
     }
 
