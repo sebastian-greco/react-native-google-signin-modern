@@ -1,5 +1,6 @@
-#import <GoogleSigninModernSpec/GoogleSigninModernSpec.h>
+#import <React/RCTBridgeModule.h>
+#import <React/RCTUtils.h>
 
-@interface GoogleSigninModern : NSObject <NativeGoogleSigninModernSpec>
+@interface GoogleSigninModern : NSObject <RCTBridgeModule>
 
 @end

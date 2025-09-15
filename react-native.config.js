@@ -3,7 +3,8 @@ module.exports = {
     platforms: {
       android: {
         sourceDir: './android',
-        packageImportPath: 'import com.googlesigninmodern.GoogleSigninModernPackage;',
+        packageImportPath:
+          'import com.googlesigninmodern.GoogleSigninModernPackage;',
       },
     },
   },

@@ -35,7 +35,14 @@ npm install react-native-google-signin-modern
    No additional Android configuration needed! The library uses AndroidX Credential Manager which handles Google Sign-In automatically.
 
 ### iOS Setup
-iOS support coming soon! Currently Android-only.
+
+See [iOS Setup Guide](docs/ios-setup.md) for detailed instructions.
+
+**Quick Setup:**
+1. Add `GoogleService-Info.plist` to your iOS project
+2. Configure URL schemes in `Info.plist` with your `REVERSED_CLIENT_ID`
+3. Run `cd ios && pod install`
+4. Use your **Web Client ID** (not iOS Client ID) for configuration
 
 ## 📱 Usage
 
