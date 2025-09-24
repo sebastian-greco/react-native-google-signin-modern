@@ -21,7 +21,7 @@ import com.facebook.react.turbomodule.core.interfaces.TurboModule
 
 class GoogleSigninModernTurboModule(reactContext: ReactApplicationContext) : NativeModule, TurboModule {
     
-    private val TAG = "GoogleSigninModern"
+    private val TAG = "GoogleSigninModernTurboModule"
     private val reactApplicationContext = reactContext
     private var credentialManager: CredentialManager? = null
     private var webClientId: String? = null

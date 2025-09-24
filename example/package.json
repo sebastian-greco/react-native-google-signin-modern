@@ -1,6 +1,7 @@
 {
   "name": "react-native-google-signin-modern-example",
   "version": "0.0.1",
+  "description": "Example application demonstrating react-native-google-signin-modern - A modern alternative to legacy Google Sign-In libraries, using latest AndroidX Credential Manager and Google Identity Services APIs",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
