@@ -61,10 +61,13 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
 
     override fun configure(webClientId: String, promise: Promise) {
         try {
-            // Validate webClientId format (basic validation)
-            if (webClientId.isBlank() || !webClientId.contains(".")) {
-                promise.reject(ERROR_CONFIGURE_ERROR, "Invalid webClientId format")
+            // Validate webClientId format - Google OAuth client IDs typically end with .apps.googleusercontent.com
+            if (webClientId.isBlank()) {
+                promise.reject(ERROR_CONFIGURE_ERROR, "webClientId cannot be blank")
                 return
+            }
+            if (!webClientId.endsWith(".apps.googleusercontent.com")) {
+                Log.w(TAG, "webClientId doesn't match expected format: *.apps.googleusercontent.com")
             }
             
             this.webClientId = webClientId
@@ -233,15 +236,22 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
      * Handle the case when no Google accounts are available
      */
     private fun handleNoAccountsError(e: GetCredentialException) {
-        val errorMessage = e.message ?: ""
-        if (errorMessage.contains("No credentials available") || 
-            errorMessage.contains("no accounts") ||
-            e.type == NO_CREDENTIAL_EXCEPTION_TYPE) {
+        // Check exception type first (most reliable)
+        if (e.type == NO_CREDENTIAL_EXCEPTION_TYPE || e is NoCredentialException) {
             Log.d(TAG, "No Google accounts available - triggering add account flow")
             triggerAddGoogleAccountIntent()
             clearPendingPromiseWithError(ERROR_NO_GOOGLE_ACCOUNTS, "Please add a Google account to continue. The account settings have been opened for you.")
         } else {
-            clearPendingPromiseWithError(ERROR_SIGN_IN_ERROR, "Sign-in failed: ${e.message}")
+            // Fall back to case-insensitive message parsing as secondary check
+            val errorMessage = (e.message ?: "").lowercase()
+            if (errorMessage.contains("no credentials available") || 
+                errorMessage.contains("no accounts")) {
+                Log.d(TAG, "No Google accounts available (detected via message) - triggering add account flow")
+                triggerAddGoogleAccountIntent()
+                clearPendingPromiseWithError(ERROR_NO_GOOGLE_ACCOUNTS, "Please add a Google account to continue. The account settings have been opened for you.")
+            } else {
+                clearPendingPromiseWithError(ERROR_SIGN_IN_ERROR, "Sign-in failed: ${e.message}")
+            }
         }
     }
 
