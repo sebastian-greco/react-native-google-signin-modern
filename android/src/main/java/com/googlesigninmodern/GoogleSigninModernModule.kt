@@ -243,7 +243,6 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         } else {
             clearPendingPromiseWithError(ERROR_SIGN_IN_ERROR, "Sign-in failed: ${e.message}")
         }
-        }
     }
 
     private fun triggerAddGoogleAccountIntent() {
