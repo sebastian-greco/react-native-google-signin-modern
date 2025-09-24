@@ -10,6 +10,7 @@ import com.facebook.react.bridge.Arguments
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.gms.common.GoogleApiAvailability
@@ -18,6 +19,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.util.Log
+import android.content.Intent
+import android.provider.Settings
 
 @ReactModule(name = GoogleSigninModernModule.NAME)
 class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
@@ -92,95 +95,8 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
 
             Log.d(TAG, "Creating Google ID option with webClientId: $webClientId")
 
-            val googleIdOption = GetGoogleIdOption.Builder()
-                .setServerClientId(webClientId!!)
-                .setFilterByAuthorizedAccounts(false)
-                .build()
-
-            val request = GetCredentialRequest.Builder()
-                .addCredentialOption(googleIdOption)
-                .build()
-
-            Log.d(TAG, "Starting credential request")
-
-            // Use coroutines for async operation
-            CoroutineScope(Dispatchers.Main).launch {
-                try {
-                    val result = credentialManager.getCredential(
-                        request = request,
-                        context = currentActivity
-                    )
-
-                    Log.d(TAG, "Credential result received")
-                    Log.d(TAG, "Credential type: ${result.credential.type}")
-                    Log.d(TAG, "Credential class: ${result.credential.javaClass.name}")
-
-                    when (val credential = result.credential) {
-                        is GoogleIdTokenCredential -> {
-                            Log.d(TAG, "Google ID token credential received (instanceof)")
-                            
-                            val idToken = credential.idToken
-                            val user = Arguments.createMap().apply {
-                                putString("id", credential.id)
-                                putString("name", credential.displayName)
-                                putString("email", credential.id) // Google ID is the email
-                                putString("photo", credential.profilePictureUri?.toString())
-                            }
-
-                            val response = Arguments.createMap().apply {
-                                putString("idToken", idToken)
-                                putMap("user", user)
-                            }
-
-                            pendingPromise?.resolve(response)
-                            pendingPromise = null
-                        }
-                        else -> {
-                            // Handle Google ID Token credential by type string
-                            if (credential.type == "com.google.android.libraries.identity.googleid.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL") {
-                                Log.d(TAG, "Google ID token credential received (by type)")
-                                try {
-                                    val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                                    val idToken = googleCredential.idToken
-                                    val user = Arguments.createMap().apply {
-                                        putString("id", googleCredential.id)
-                                        putString("name", googleCredential.displayName)
-                                        putString("email", googleCredential.id)
-                                        putString("photo", googleCredential.profilePictureUri?.toString())
-                                    }
-
-                                    val response = Arguments.createMap().apply {
-                                        putString("idToken", idToken)
-                                        putMap("user", user)
-                                    }
-
-                                    pendingPromise?.resolve(response)
-                                    pendingPromise = null
-                                } catch (parseError: Exception) {
-                                    Log.e(TAG, "Failed to parse Google credential", parseError)
-                                    pendingPromise?.reject("CREDENTIAL_PARSE_ERROR", "Failed to parse Google credential: ${parseError.message}")
-                                    pendingPromise = null
-                                }
-                            } else {
-                                Log.e(TAG, "Unexpected credential type: ${credential.type}")
-                                Log.d(TAG, "Credential class: ${credential.javaClass.name}")
-                                Log.d(TAG, "Available credential data: ${credential.data}")
-                                pendingPromise?.reject("UNEXPECTED_CREDENTIAL", "Unexpected credential type: ${credential.type}")
-                                pendingPromise = null
-                            }
-                        }
-                    }
-
-                } catch (e: GetCredentialException) {
-                    Log.e(TAG, "GetCredentialException: ${e.type} - ${e.message}")
-                    pendingPromise?.reject("SIGN_IN_ERROR", "Sign-in failed: ${e.message}")
-                    pendingPromise = null
-                } catch (e: Exception) {
-                    Log.e(TAG, "Exception in signInWithGoogle", e)
-                    pendingPromise?.reject("SIGN_IN_ERROR", "Sign-in failed: ${e.message}")
-                    pendingPromise = null
-                }
-            }
+            // First attempt: Check for authorized accounts (existing sign-ins)
+            signInWithFilter(true)
 
         } catch (e: Exception) {
             Log.e(TAG, "Exception in signIn", e)
@@ -189,6 +105,137 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
             activePromise.reject("SIGN_IN_ERROR", "Sign-in failed: ${e.message}")
             // Clear pendingPromise to avoid leaking or reusing it
             pendingPromise = null
+        }
+    }
+
+    private fun signInWithFilter(filterByAuthorizedAccounts: Boolean) {
+        val currentActivity = reactApplicationContext.currentActivity ?: return
+
+        val googleIdOption = GetGoogleIdOption.Builder()
+            .setServerClientId(webClientId!!)
+            .setFilterByAuthorizedAccounts(filterByAuthorizedAccounts)
+            .build()
+
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(googleIdOption)
+            .build()
+
+        val filterType = if (filterByAuthorizedAccounts) "authorized accounts" else "all accounts"
+        Log.d(TAG, "Starting credential request with filter: $filterType")
+
+        // Use coroutines for async operation
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val result = credentialManager!!.getCredential(
+                    request = request,
+                    context = currentActivity
+                )
+
+                Log.d(TAG, "Credential result received")
+                Log.d(TAG, "Credential type: ${result.credential.type}")
+                Log.d(TAG, "Credential class: ${result.credential.javaClass.name}")
+
+                when (val credential = result.credential) {
+                    is GoogleIdTokenCredential -> {
+                        Log.d(TAG, "Google ID token credential received (instanceof)")
+                        
+                        val idToken = credential.idToken
+                        val user = Arguments.createMap().apply {
+                            putString("id", credential.id)
+                            putString("name", credential.displayName)
+                            putString("email", credential.id) // Google ID is the email
+                            putString("photo", credential.profilePictureUri?.toString())
+                        }
+
+                        val response = Arguments.createMap().apply {
+                            putString("idToken", idToken)
+                            putMap("user", user)
+                        }
+
+                        pendingPromise?.resolve(response)
+                        pendingPromise = null
+                    }
+                    else -> {
+                        // Handle Google ID Token credential by type string
+                        if (credential.type == "com.google.android.libraries.identity.googleid.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL") {
+                            Log.d(TAG, "Google ID token credential received (by type)")
+                            try {
+                                val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                                val idToken = googleCredential.idToken
+                                val user = Arguments.createMap().apply {
+                                    putString("id", googleCredential.id)
+                                    putString("name", googleCredential.displayName)
+                                    putString("email", googleCredential.id)
+                                    putString("photo", googleCredential.profilePictureUri?.toString())
+                                }
+
+                                val response = Arguments.createMap().apply {
+                                    putString("idToken", idToken)
+                                    putMap("user", user)
+                                }
+
+                                pendingPromise?.resolve(response)
+                                pendingPromise = null
+                            } catch (parseError: Exception) {
+                                Log.e(TAG, "Failed to parse Google credential", parseError)
+                                pendingPromise?.reject("CREDENTIAL_PARSE_ERROR", "Failed to parse Google credential: ${parseError.message}")
+                                pendingPromise = null
+                            }
+                        } else {
+                            Log.e(TAG, "Unexpected credential type: ${credential.type}")
+                            Log.d(TAG, "Credential class: ${credential.javaClass.name}")
+                            Log.d(TAG, "Available credential data: ${credential.data}")
+                            pendingPromise?.reject("UNEXPECTED_CREDENTIAL", "Unexpected credential type: ${credential.type}")
+                            pendingPromise = null
+                        }
+                    }
+                }
+
+            } catch (e: GetCredentialException) {
+                Log.e(TAG, "GetCredentialException: ${e.type} - ${e.message}")
+                
+                // Handle the case where no credentials are available
+                if (filterByAuthorizedAccounts && e.type == "androidx.credentials.exceptions.GetCredentialException.TYPE_NO_CREDENTIAL") {
+                    Log.d(TAG, "No authorized accounts found, trying with all accounts")
+                    // Retry with all accounts (allows sign-up flow)
+                    signInWithFilter(false)
+                } else {
+                    // Check if this is a "no accounts available" case
+                    val errorMessage = e.message ?: ""
+                    if (errorMessage.contains("No credentials available") || 
+                        errorMessage.contains("no accounts") ||
+                        e.type == "androidx.credentials.exceptions.GetCredentialException.TYPE_NO_CREDENTIAL") {
+                        Log.d(TAG, "No Google accounts available on device - triggering add account flow")
+                        triggerAddGoogleAccountIntent()
+                        pendingPromise?.reject("NO_GOOGLE_ACCOUNTS", "Please add a Google account to continue. The account settings have been opened for you.")
+                    } else {
+                        pendingPromise?.reject("SIGN_IN_ERROR", "Sign-in failed: ${e.message}")
+                    }
+                    pendingPromise = null
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception in signInWithFilter", e)
+                pendingPromise?.reject("SIGN_IN_ERROR", "Sign-in failed: ${e.message}")
+                pendingPromise = null
+            }
+        }
+    }
+
+    private fun triggerAddGoogleAccountIntent() {
+        try {
+            val currentActivity = reactApplicationContext.currentActivity
+            if (currentActivity != null) {
+                Log.d(TAG, "Opening Add Account screen for Google accounts")
+                val addAccountIntent = Intent(Settings.ACTION_ADD_ACCOUNT).apply {
+                    // Filter to show only Google account types
+                    putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+                }
+                currentActivity.startActivity(addAccountIntent)
+            } else {
+                Log.w(TAG, "No current activity available to show Add Account screen")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open Add Account screen", e)
         }
     }
 
