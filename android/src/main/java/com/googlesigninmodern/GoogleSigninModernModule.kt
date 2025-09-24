@@ -81,6 +81,12 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
                 return
             }
 
+            // Check if there's already a sign-in in progress to prevent concurrent calls
+            if (pendingPromise != null) {
+                promise.reject("SIGN_IN_IN_PROGRESS", "Sign-in already in progress")
+                return
+            }
+
             // Store promise for callback
             pendingPromise = promise
 
@@ -178,7 +184,11 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
 
         } catch (e: Exception) {
             Log.e(TAG, "Exception in signIn", e)
-            promise.reject("SIGN_IN_ERROR", "Sign-in failed: ${e.message}")
+            // Reject the active promise (pendingPromise if set, otherwise the original promise)
+            val activePromise = pendingPromise ?: promise
+            activePromise.reject("SIGN_IN_ERROR", "Sign-in failed: ${e.message}")
+            // Clear pendingPromise to avoid leaking or reusing it
+            pendingPromise = null
         }
     }
 
@@ -186,9 +196,13 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         try {
             Log.d(TAG, "signOut called")
             
+            // If there's a pending sign-in, reject it first
+            pendingPromise?.reject("SIGN_OUT_REQUESTED", "Sign-out was requested")
+            
             // Clear stored authentication state
             webClientId = null
             credentialManager = null
+            pendingPromise = null
             
             Log.d(TAG, "Sign out completed")
             promise.resolve(null)
