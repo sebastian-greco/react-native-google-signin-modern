@@ -108,6 +108,21 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         }
     }
 
+    private fun createSignInResponse(credential: GoogleIdTokenCredential): WritableMap {
+        val idToken = credential.idToken
+        val user = Arguments.createMap().apply {
+            putString("id", credential.id)
+            putString("name", credential.displayName)
+            putString("email", credential.id) // Google ID is the email
+            putString("photo", credential.profilePictureUri?.toString())
+        }
+
+        return Arguments.createMap().apply {
+            putString("idToken", idToken)
+            putMap("user", user)
+        }
+    }
+
     private fun signInWithFilter(filterByAuthorizedAccounts: Boolean) {
         val currentActivity = reactApplicationContext.currentActivity ?: return
 
@@ -139,19 +154,7 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
                     is GoogleIdTokenCredential -> {
                         Log.d(TAG, "Google ID token credential received (instanceof)")
                         
-                        val idToken = credential.idToken
-                        val user = Arguments.createMap().apply {
-                            putString("id", credential.id)
-                            putString("name", credential.displayName)
-                            putString("email", credential.id) // Google ID is the email
-                            putString("photo", credential.profilePictureUri?.toString())
-                        }
-
-                        val response = Arguments.createMap().apply {
-                            putString("idToken", idToken)
-                            putMap("user", user)
-                        }
-
+                        val response = createSignInResponse(credential)
                         pendingPromise?.resolve(response)
                         pendingPromise = null
                     }
@@ -161,19 +164,7 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
                             Log.d(TAG, "Google ID token credential received (by type)")
                             try {
                                 val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                                val idToken = googleCredential.idToken
-                                val user = Arguments.createMap().apply {
-                                    putString("id", googleCredential.id)
-                                    putString("name", googleCredential.displayName)
-                                    putString("email", googleCredential.id)
-                                    putString("photo", googleCredential.profilePictureUri?.toString())
-                                }
-
-                                val response = Arguments.createMap().apply {
-                                    putString("idToken", idToken)
-                                    putMap("user", user)
-                                }
-
+                                val response = createSignInResponse(googleCredential)
                                 pendingPromise?.resolve(response)
                                 pendingPromise = null
                             } catch (parseError: Exception) {
