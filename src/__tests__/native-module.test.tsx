@@ -19,8 +19,8 @@ import {
 import { commonTestSetup, commonTestCleanup } from './test-utils';
 
 describe('Native Module Interface', () => {
-  beforeEach(() => {
-    commonTestSetup();
+  beforeEach(async () => {
+    await commonTestSetup();
     resetFactoryCounters();
   });
 
@@ -181,7 +181,7 @@ describe('Native Module Interface', () => {
       await NativeGoogleSigninModern.signIn();
       const endTime = Date.now();
 
-      expect(endTime - startTime).toBeGreaterThanOrEqual(90); // 100ms delay with 10ms buffer
+      expect(endTime - startTime).toBeGreaterThanOrEqual(100); // 100ms delay (setSignInDelay adds buffer internally)
     });
 
     it('should handle pre-configured user scenarios', async () => {

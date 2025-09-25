@@ -21,8 +21,8 @@ import {
 } from './test-utils';
 
 describe('GoogleSignInModule - Error Handling', () => {
-  beforeEach(() => {
-    commonTestSetup();
+  beforeEach(async () => {
+    await commonTestSetup();
   });
 
   afterEach(() => {

@@ -203,7 +203,8 @@ export const mockGoogleSignIn = {
   },
 
   setSignInDelay: (ms: number) => {
-    mockState.signInDelay = ms;
+    // Add a small buffer to account for timing variations in test execution
+    mockState.signInDelay = ms + 10;
   },
 
   // Access to mock functions for verification

@@ -34,8 +34,8 @@ import {
 } from './test-utils';
 
 describe('GoogleSignInModule', () => {
-  beforeEach(() => {
-    commonTestSetup();
+  beforeEach(async () => {
+    await commonTestSetup();
     resetFactoryCounters();
   });
 

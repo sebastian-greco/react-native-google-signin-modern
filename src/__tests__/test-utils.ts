@@ -268,9 +268,9 @@ export const verifySingleton = (getInstance: () => any) => {
 /**
  * Common test setup for beforeEach hooks
  */
-export const commonTestSetup = () => {
+export const commonTestSetup = async () => {
   // Reset the GoogleSignIn singleton state
-  const { GoogleSignInModule } = require('../index');
+  const { GoogleSignInModule } = await import('../index');
   if (GoogleSignInModule._resetForTesting) {
     GoogleSignInModule._resetForTesting();
   }
