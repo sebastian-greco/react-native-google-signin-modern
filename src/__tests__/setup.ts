@@ -14,7 +14,7 @@ global.console = {
   // debug: jest.fn(),
   // info: jest.fn(),
   // warn: jest.fn(),
-  error: jest.fn(),
+  // error: jest.fn(), // Do not globally mock console.error; mock only in specific tests if needed
 };
 
 // Global test utilities

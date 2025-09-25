@@ -189,9 +189,9 @@ export const createMockUsers = (
   return Array.from({ length: count }, (_, index) =>
     createMockUser({
       ...baseOverrides,
-      id: `user-${index}@example.com`,
-      email: `user-${index}@example.com`,
-      name: `Test User ${index}`,
+      id: `batch-user-${getUniqueId()}-${index}@example.com`,
+      email: `batch-user-${getUniqueId()}-${index}@example.com`,
+      name: `Test User ${getUniqueId()}-${index}`,
     })
   );
 };
@@ -204,9 +204,9 @@ export const createMockSignInResults = (
 ): GoogleSignInResult[] => {
   return Array.from({ length: count }, (_, index) =>
     createMockSignInResult({
-      id: `user-${index}@example.com`,
-      email: `user-${index}@example.com`,
-      name: `Test User ${index}`,
+      id: `batch-result-${getUniqueId()}-${index}@example.com`,
+      email: `batch-result-${getUniqueId()}-${index}@example.com`,
+      name: `Test Result User ${getUniqueId()}-${index}`,
     })
   );
 };

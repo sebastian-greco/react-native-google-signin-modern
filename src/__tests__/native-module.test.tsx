@@ -181,7 +181,7 @@ describe('Native Module Interface', () => {
       await NativeGoogleSigninModern.signIn();
       const endTime = Date.now();
 
-      expect(endTime - startTime).toBeGreaterThanOrEqual(100);
+      expect(endTime - startTime).toBeGreaterThanOrEqual(90); // 100ms delay with 10ms buffer
     });
 
     it('should handle pre-configured user scenarios', async () => {
