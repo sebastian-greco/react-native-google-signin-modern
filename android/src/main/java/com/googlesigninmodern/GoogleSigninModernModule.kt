@@ -21,6 +21,8 @@ import kotlinx.coroutines.launch
 import android.util.Log
 import android.content.Intent
 import android.provider.Settings
+import android.util.Base64
+import org.json.JSONObject
 
 @ReactModule(name = GoogleSigninModernModule.NAME)
 class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
@@ -153,14 +155,14 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
             // Store promise for callback
             pendingPromise = promise
 
-            Log.d(TAG, "Starting ${flowType.name.lowercase()} flow with authorized accounts")
+            Log.d(TAG, "Starting ${flowType.name.lowercase(java.util.Locale.ROOT)} flow with authorized accounts")
             // All flows start by checking authorized accounts first
             performCredentialRequest(filterByAuthorizedAccounts = true, flowType = flowType)
 
         } catch (e: Exception) {
-            Log.e(TAG, "Exception in ${flowType.name.lowercase()}", e)
+            Log.e(TAG, "Exception in ${flowType.name.lowercase(java.util.Locale.ROOT)}", e)
             val errorCode = if (flowType == SignInFlowType.TOKEN_REFRESH) ERROR_TOKEN_REFRESH_ERROR else ERROR_SIGN_IN_ERROR
-            val errorMessage = "${flowType.name.lowercase()} failed: ${e.message}"
+            val errorMessage = "${flowType.name.lowercase(java.util.Locale.ROOT)} failed: ${e.message}"
             clearPendingPromiseWithError(errorCode, errorMessage, promise)
         }
     }
@@ -174,10 +176,34 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         pendingPromise = null
     }
 
+    /**
+     * Extract the stable user ID from the ID token's "sub" claim.
+     * The "sub" (subject) claim is the stable, unique identifier for the Google user
+     * that won't change even if the user changes their email address.
+     */
+    private fun extractUserIdFromToken(idToken: String): String? {
+        return try {
+            // JWT tokens have 3 parts separated by dots: header.payload.signature
+            val parts = idToken.split(".")
+            if (parts.size >= 2) {
+                // Decode the payload (second part)
+                val payload = String(Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_PADDING))
+                val json = JSONObject(payload)
+                json.optString("sub", null)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to extract user ID from token: ${e.message}")
+            null
+        }
+    }
+
     private fun createSignInResponse(credential: GoogleIdTokenCredential): WritableMap {
         val idToken = credential.idToken
+        val stableUserId = extractUserIdFromToken(idToken) ?: credential.id
         val user = Arguments.createMap().apply {
-            putString("id", credential.id)
+            putString("id", stableUserId)
             putString("name", credential.displayName)
             putString("email", credential.id) // Google ID is the email
             putString("photo", credential.profilePictureUri?.toString())
@@ -382,10 +408,32 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         promise.resolve(false)
     }
 
+    /**
+     * Initiates a fresh credential request/refresh flow to obtain new authentication tokens.
+     * 
+     * **Important**: This method does NOT return cached tokens. Instead, it triggers a complete
+     * credential refresh flow using Android's Credential Manager API.
+     * 
+     * **Behavior**:
+     * - Triggers a new sign-in flow with [SignInFlowType.TOKEN_REFRESH]
+     * - Uses Credential Manager to request fresh credentials from Google
+     * - May prompt the user for account selection or authentication
+     * - Tokens are not persisted by this module (app should manage token storage)
+     * 
+     * **When to use**:
+     * - Before making authenticated API requests that require fresh tokens
+     * - When existing tokens have expired or need refresh
+     * - When you need guaranteed fresh credentials
+     * 
+     * **Note**: With Android's Credential Manager, persistent token storage is not maintained
+     * by this module. Apps are responsible for managing their own authentication state and
+     * token persistence as needed.
+     * 
+     * @param promise Promise that resolves with fresh [GoogleSignInTokens] or rejects on failure
+     */
     override fun getTokens(promise: Promise) {
-        // With Credential Manager, we don't maintain persistent tokens
-        // Need to trigger a new sign-in flow to get fresh tokens
-        Log.w(TAG, "getTokens called - Credential Manager doesn't maintain persistent tokens")
+        // Initiating fresh credential request flow via Credential Manager
+        Log.i(TAG, "getTokens called - initiating fresh credential refresh flow")
         
         performSignIn(
             promise = promise,

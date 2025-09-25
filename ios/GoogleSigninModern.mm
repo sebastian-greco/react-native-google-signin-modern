@@ -222,8 +222,11 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
     GIDGoogleUser *user = result.user;
     GIDProfileData *profile = user.profile;
     
+    // Extract stable user ID from ID token's "sub" claim as fallback
+    NSString *stableUserId = [self extractUserIdFromToken:user.idToken.tokenString] ?: profile.email ?: @"";
+    
     NSDictionary *userDict = @{
-        @"id": profile.email ?: @"",
+        @"id": stableUserId,
         @"name": profile.name ?: @"",
         @"email": profile.email ?: @"",
         @"photo": profile.hasImage ? [profile imageURLWithDimension:120].absoluteString : [NSNull null]
@@ -294,8 +297,8 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
                                message:@"Please add a Google account in Settings > Mail > Accounts and try again."];
 }
 
-- (void)signOut:(void (^)(id result))resolve
-       rejecter:(void (^)(NSString *code, NSString *message, NSError *error))reject {
+RCT_EXPORT_METHOD(signOut:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject) {
     @try {
         RCTLogInfo(@"Sign-out requested");
         
@@ -321,12 +324,17 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
     }
 }
 
-- (void)isSignedIn:(void (^)(id result))resolve
-          rejecter:(void (^)(NSString *code, NSString *message, NSError *error))reject {
-    // With modern Google Sign-In, apps should manage their own auth state
-    // Return false to encourage proper state management
-    RCTLogInfo(@"isSignedIn called - returning false (app should manage auth state)");
+RCT_EXPORT_METHOD(isSignedIn:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+#if HAS_GOOGLE_SIGNIN
+    GIDGoogleUser *currentUser = [GIDSignIn sharedInstance].currentUser;
+    BOOL isSignedIn = currentUser != nil;
+    RCTLogInfo(@"isSignedIn called - user status: %@", isSignedIn ? @"signed in" : @"signed out");
+    resolve(@(isSignedIn));
+#else
+    RCTLogInfo(@"isSignedIn called - Google Sign-In not available, returning false");
     resolve(@NO);
+#endif
 }
 
 RCT_EXPORT_METHOD(getTokens:(RCTPromiseResolveBlock)resolve
@@ -381,6 +389,46 @@ RCT_EXPORT_METHOD(getTokens:(RCTPromiseResolveBlock)resolve
 }
 
 #pragma mark - Helper Methods
+
+/**
+ * Extract the stable user ID from the ID token's "sub" claim.
+ * The "sub" (subject) claim is the stable, unique identifier for the Google user
+ * that won't change even if the user changes their email address.
+ */
+- (NSString *)extractUserIdFromToken:(NSString *)idToken {
+    if (!idToken || idToken.length == 0) {
+        return nil;
+    }
+    
+    @try {
+        // JWT tokens have 3 parts separated by dots: header.payload.signature
+        NSArray *parts = [idToken componentsSeparatedByString:@"."];
+        if (parts.count >= 2) {
+            NSString *payload = parts[1];
+            
+            // Add padding if needed for base64 decoding
+            NSInteger paddingLength = (4 - (payload.length % 4)) % 4;
+            payload = [payload stringByPaddingToLength:payload.length + paddingLength
+                                            withString:@"=" startingAtIndex:0];
+            
+            // Decode the payload (second part)
+            NSData *decodedData = [[NSData alloc] initWithBase64EncodedString:payload options:NSDataBase64DecodingIgnoreUnknownCharacters];
+            if (decodedData) {
+                NSString *payloadString = [[NSString alloc] initWithData:decodedData encoding:NSUTF8StringEncoding];
+                if (payloadString) {
+                    NSData *jsonData = [payloadString dataUsingEncoding:NSUTF8StringEncoding];
+                    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
+                    return json[@"sub"];
+                }
+            }
+        }
+    }
+    @catch (NSException *exception) {
+        RCTLogWarn(@"Failed to extract user ID from token: %@", exception.reason);
+    }
+    
+    return nil;
+}
 
 - (void)clearPendingPromiseWithError:(NSString *)errorCode message:(NSString *)message {
     if (self.pendingReject) {

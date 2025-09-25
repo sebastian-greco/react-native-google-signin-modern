@@ -85,7 +85,12 @@ class GoogleSignIn {
   }
 
   /**
-   * Get fresh authentication tokens for the currently signed-in user
+   * Get fresh authentication tokens for the currently signed-in user.
+   *
+   * **Important**: This method initiates a fresh credential request flow and does NOT
+   * return cached tokens. It may prompt the user for account selection or authentication.
+   *
+   * Use this method before making authenticated API requests that require fresh tokens.
    */
   async getTokens(): Promise<GoogleSignInTokens> {
     if (!this.isConfigured) {
