@@ -27,6 +27,14 @@ class GoogleSignIn {
   private isConfigured = false;
 
   /**
+   * INTERNAL: Reset configuration state (for testing only)
+   * @internal
+   */
+  _resetForTesting(): void {
+    this.isConfigured = false;
+  }
+
+  /**
    * Configure Google Sign-In with Web Client ID
    */
   async configure(config: GoogleSignInConfig): Promise<void> {

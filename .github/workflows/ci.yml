@@ -42,7 +42,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Run unit tests
-        run: yarn test --maxWorkers=2 --coverage
+        run: yarn test:ci
 
   build-library:
     runs-on: ubuntu-latest
@@ -131,6 +131,14 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
+      - name: Setup Ruby
+        if: env.turbo_cache_hit != 1
+        uses: ruby/setup-ruby@78c01b705fd9d5ad960d432d3a0cfa341d50e410 # v1.215.0
+        with:
+          ruby-version: '3.2'
+          bundler-cache: false
+          working-directory: example
+
       - name: Cache turborepo for iOS
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
@@ -152,6 +160,19 @@ jobs:
         uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Cache CocoaPods
+        if: env.turbo_cache_hit != 1
+        id: cocoapods-cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            example/ios/Pods
+            example/vendor/bundle
+            ~/.cocoapods/repos
+          key: ${{ runner.os }}-cocoapods-${{ hashFiles('example/ios/Podfile.lock', 'example/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cocoapods-
 
       - name: Install cocoapods
         if: env.turbo_cache_hit != 1 && steps.cocoapods-cache.outputs.cache-hit != 'true'

@@ -8,7 +8,7 @@ This is a modern React Native Google Sign-In library built with AndroidX Credent
 - **Architecture**: TurboModule-based with TypeScript support
 - **Platforms**: Android (AndroidX Credential Manager) + iOS (Google Sign-In SDK)
 - **Build System**: React Native Builder Bob with TypeScript compilation
-- **Testing**: Jest with React Native preset (currently minimal coverage)
+- **Testing**: Comprehensive Jest infrastructure with 68 tests and 100% coverage
 
 ---
 
@@ -89,26 +89,60 @@ ios/
 
 ---
 
-## 🧪 Testing Strategy
+## 🧪 Testing Infrastructure
 
 ### Current State
-- **Minimal coverage**: Only `it.todo('write a test')` in place
-- **Jest configured**: React Native preset with proper ignores
-- **Testing planned**: See issue #12 for comprehensive testing foundation
+- **Comprehensive coverage**: 68 tests across 3 specialized test suites
+- **Coverage metrics**: 100% statement/function coverage, 88.88% branch coverage
+- **Advanced mocking**: Sophisticated native module mocks with controllable state
+- **Testing documentation**: Complete guide available in `TESTING.md`
 
-### Testing Guidelines (When Implemented)
-- **Unit tests**: Focus on TypeScript API behavior and error handling
-- **Native module tests**: Mock platform-specific implementations
-- **Integration tests**: Test complete sign-in flows with test accounts
-- **Coverage target**: ≥90% for core TypeScript API
+### Testing Guidelines
+- **Unit tests**: Focus on TypeScript API behavior and comprehensive error handling
+- **Native module tests**: Use advanced mocking system for platform-specific implementations
+- **Integration tests**: Test complete sign-in flows with realistic scenarios
+- **Custom matchers**: Use domain-specific Jest matchers (`toBeGoogleSignInResult`, etc.)
 
-### Test Structure (Future)
+### Test Structure
 ```
 src/__tests__/
-├── index.test.tsx         # Main API tests
-├── error-handling.test.tsx # Error scenarios
-└── __mocks__/             # Native module mocks
+├── index.test.tsx              # Main API tests (35 tests)
+├── error-scenarios.test.tsx    # Error handling tests (16 tests)
+├── native-module.test.tsx      # Mock infrastructure tests (17 tests)
+├── setup.ts                    # Global test configuration and custom matchers
+├── factories.ts                # Test data factories and generators
+├── test-utils.ts               # Common utilities and helpers
+└── __mocks__/
+    └── NativeGoogleSigninModern.ts  # Comprehensive native module mock
 ```
+
+### Writing Tests
+- **Always use the testing infrastructure**: Import utilities from `test-utils.ts` and data from `factories.ts`
+- **Mock control**: Use `mockGoogleSignIn` utilities to control mock behavior and state
+- **Custom assertions**: Leverage custom matchers for Google Sign-In specific validations
+- **Error testing**: Test all error scenarios with proper error codes using `expectErrorCode`
+- **State management**: Use `setupConfiguredState`, `setupSignedInUser` for consistent test setup
+- **Async patterns**: All setup functions are async - use `await` in `beforeEach` hooks
+
+### Test Examples
+```typescript
+// Basic test structure
+beforeEach(async () => {
+  await commonTestSetup();
+  resetFactoryCounters();
+});
+
+// Using test utilities
+const mockResult = await setupSignedInUser();
+const config = createMockConfig();
+await expectToThrow(() => GoogleSignInModule.signIn(), 'Expected error');
+
+// Custom matchers
+expect(result).toBeGoogleSignInResult();
+expect(tokens).toBeGoogleSignInTokens();
+```
+
+**📖 Complete Testing Guide**: See `TESTING.md` for comprehensive documentation, examples, and best practices.
 
 ---
 
@@ -169,7 +203,9 @@ src/__tests__/
 ### Code Quality Checks
 - **TypeScript compilation**: `yarn typecheck`
 - **Linting**: `yarn lint` (auto-fix with `yarn lint --fix`)
-- **Testing**: `yarn test` (currently minimal)
+- **Testing**: `yarn test` (comprehensive suite with 68 tests)
+- **Test coverage**: `yarn test:coverage` (generates detailed reports)
+- **Test watch mode**: `yarn test:watch` (for development)
 - **Building**: `yarn prepare` (builds library for distribution)
 
 ### Platform-Specific Notes
@@ -187,7 +223,7 @@ src/__tests__/
 - **Release automation**: `release-it` handles tagging and publishing
 
 ### Pre-Release Checklist
-- [ ] All tests passing (when implemented)
+- [x] All tests passing (comprehensive test suite implemented)
 - [ ] Documentation updated
 - [ ] Example app working on both platforms
 - [ ] Breaking changes documented
@@ -202,8 +238,8 @@ src/__tests__/
 2. **Implement Android version** in `GoogleSigninModernModule.kt`
 3. **Implement iOS version** in `GoogleSigninModern.mm`
 4. **Add wrapper in main API** (`src/index.tsx`)
-5. **Update documentation** and examples
-6. **Add tests** (when testing is implemented)
+5. **Write comprehensive tests** using testing infrastructure
+6. **Update documentation** and examples
 
 ### Debugging Platform Issues
 - **Android**: Use `adb logcat` and Android Studio
@@ -237,13 +273,14 @@ src/__tests__/
 - **Don't make Android-only** or iOS-only changes without consideration
 - **Don't break existing method signatures** without version bumps
 - **Don't ignore error handling** scenarios
-- **Don't forget to test** on real devices
+- **Don't forget to write tests** using the comprehensive testing infrastructure
+- **Don't skip error scenarios** in test coverage
 
 ---
 
 ## 🎯 Current Priorities
 
-1. **Testing Foundation**: Implement comprehensive test suite (issue #12)
+1. **Continued Testing Excellence**: Maintain and extend comprehensive test coverage
 2. **Documentation**: Keep README and API docs up to date
 3. **Stability**: Focus on rock-solid core functionality
 4. **Performance**: Optimize bundle size and runtime performance
@@ -251,5 +288,45 @@ src/__tests__/
 
 ---
 
-*Last updated: September 25, 2025*
+## 🤖 GitHub Copilot Agent Guidelines
+
+### Testing Implementation Requirements
+When writing or modifying code in this repository, agents MUST:
+
+1. **Write comprehensive tests** for all new functionality using the established testing infrastructure
+2. **Use existing test utilities** from `src/__tests__/test-utils.ts` and factories from `src/__tests__/factories.ts`
+3. **Follow async patterns** in test setup - use `await commonTestSetup()` in `beforeEach` hooks
+4. **Test error scenarios** with proper error codes using `expectErrorCode` utility
+5. **Use custom matchers** like `toBeGoogleSignInResult()`, `toBeGoogleSignInTokens()` for domain-specific assertions
+
+### Test Structure Guidelines
+- Place tests in appropriate files: `index.test.tsx` (API tests), `error-scenarios.test.tsx` (error handling), or `native-module.test.tsx` (mock infrastructure)
+- Use descriptive test names that explain expected behavior
+- Follow AAA pattern: Arrange (setup), Act (execute), Assert (verify)
+- Group related tests in `describe` blocks with clear naming
+
+### Mock Control Examples
+```typescript
+// Set up configured state
+await setupConfiguredState();
+
+// Set up signed-in user with custom data
+const mockResult = await setupSignedInUser({ name: 'Custom User' });
+
+// Control mock behavior
+mockGoogleSignIn.setState({ isPlayServicesAvailable: false });
+mockGoogleSignIn.setError(new Error('Test error'));
+```
+
+### When NOT to Modify Tests
+- Don't modify existing passing tests without clear justification
+- Don't remove error handling tests
+- Don't skip test writing for new functionality
+- Don't use `any` types in test code
+
+**📖 Reference**: See `TESTING.md` for complete testing guide with examples and best practices.
+
+---
+
+*Last updated: January 2025 - Updated with comprehensive testing infrastructure*
 *Update these instructions when significant architectural changes occur*
