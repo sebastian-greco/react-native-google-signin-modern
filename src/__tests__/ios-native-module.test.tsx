@@ -14,15 +14,12 @@ import { mockGoogleSignIn } from './__mocks__/NativeGoogleSigninModern';
 import {
   createMockConfig,
   createMockSignInResult,
-  mockErrors,
   mockUsers,
   resetFactoryCounters,
 } from './factories';
 import {
   setupSignedInUser,
   setupConfiguredState,
-  setupUnconfiguredState,
-  setupErrorScenario,
   expectMockCallCounts,
   expectMockCalledWith,
   expectToThrow,
@@ -62,7 +59,9 @@ describe('iOS Native Module Tests', () => {
       const invalidConfig = { webClientId: 'invalid-format' };
 
       // iOS should still configure even with non-standard format (with warning)
-      await expect(GoogleSignInModule.configure(invalidConfig)).resolves.toBeUndefined();
+      await expect(
+        GoogleSignInModule.configure(invalidConfig)
+      ).resolves.toBeUndefined();
       expect(mockGoogleSignIn.getState().isConfigured).toBe(true);
     });
 
@@ -77,7 +76,11 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle configuration when Google SDK is not available', async () => {
       // Simulate iOS without Google Sign-In SDK
-      mockGoogleSignIn.setError(new Error('Google Sign-In SDK not found. Please install GoogleSignIn pod.'));
+      mockGoogleSignIn.setError(
+        new Error(
+          'Google Sign-In SDK not found. Please install GoogleSignIn pod.'
+        )
+      );
 
       const config = createMockConfig();
       await expectToThrow(
@@ -103,21 +106,21 @@ describe('iOS Native Module Tests', () => {
 
     it('should simulate iOS view controller presentation', async () => {
       await setupConfiguredState();
-      
+
       // Simulate iOS UI presentation delay
       mockGoogleSignIn.setState({ signInDelay: 50 });
-      
+
       const startTime = Date.now();
       await GoogleSignInModule.signIn();
       const endTime = Date.now();
-      
+
       // Verify some delay occurred (simulating UI presentation)
       expect(endTime - startTime).toBeGreaterThanOrEqual(45);
     });
 
     it('should handle iOS user cancellation during sign-in', async () => {
       await setupConfiguredState();
-      
+
       // Simulate iOS kGIDSignInErrorCodeCanceled
       const cancellationError = new Error('User cancelled the sign-in') as any;
       cancellationError.code = 'USER_CANCELLED';
@@ -133,7 +136,7 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS no auth in keychain error', async () => {
       await setupConfiguredState();
-      
+
       // Simulate iOS kGIDSignInErrorCodeHasNoAuthInKeychain
       const noAuthError = new Error('No Google accounts available') as any;
       noAuthError.code = 'NO_GOOGLE_ACCOUNTS';
@@ -149,7 +152,7 @@ describe('iOS Native Module Tests', () => {
 
     it('should extract user ID from iOS ID token properly', async () => {
       await setupConfiguredState();
-      
+
       // Create a user with specific ID that simulates JWT extraction
       const userWithStableId = {
         ...mockUsers.complete,
@@ -158,7 +161,7 @@ describe('iOS Native Module Tests', () => {
       mockGoogleSignIn.setSignedIn(userWithStableId);
 
       const result = await GoogleSignInModule.signIn();
-      
+
       expect(result.user.id).toBe('stable-user-id-from-sub-claim');
     });
   });
@@ -176,9 +179,11 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS silent sign-in with no previous user', async () => {
       await setupConfiguredState();
-      
+
       // Simulate iOS kGIDSignInErrorCodeHasNoAuthInKeychain for silent sign-in
-      const noUserError = new Error('The user has never signed in before, or they have since signed out.') as any;
+      const noUserError = new Error(
+        'The user has never signed in before, or they have since signed out.'
+      ) as any;
       noUserError.code = 'SIGN_IN_REQUIRED';
       mockGoogleSignIn.setError(noUserError);
 
@@ -192,8 +197,10 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS silent sign-in generic errors', async () => {
       await setupConfiguredState();
-      
-      const genericError = new Error('Silent sign-in failed: Network error') as any;
+
+      const genericError = new Error(
+        'Silent sign-in failed: Network error'
+      ) as any;
       genericError.code = 'SIGN_IN_ERROR';
       mockGoogleSignIn.setError(genericError);
 
@@ -209,13 +216,13 @@ describe('iOS Native Module Tests', () => {
   describe('iOS Promise Management & Concurrency', () => {
     it('should prevent concurrent iOS sign-in operations', async () => {
       await setupConfiguredState();
-      
+
       // Add a delay to simulate pending operation
       mockGoogleSignIn.setState({ signInDelay: 100 });
-      
+
       // Start first sign-in (simulate pending)
       const firstSignInPromise = GoogleSignInModule.signIn();
-      
+
       // Try to start second sign-in immediately
       try {
         await GoogleSignInModule.signIn();
@@ -223,18 +230,18 @@ describe('iOS Native Module Tests', () => {
       } catch (error) {
         expectErrorCode(error, 'SIGN_IN_IN_PROGRESS');
       }
-      
+
       // Wait for first to complete
       await firstSignInPromise;
     });
 
     it('should prevent concurrent iOS silent sign-in operations', async () => {
       await setupSignedInUser(); // Set up a signed-in user first
-      
+
       // Start first silent sign-in (simulate delay to test concurrency)
       mockGoogleSignIn.setState({ signInDelay: 100 });
       const firstPromise = GoogleSignInModule.signInSilently();
-      
+
       // Try to start second immediately
       try {
         await GoogleSignInModule.signInSilently();
@@ -242,29 +249,29 @@ describe('iOS Native Module Tests', () => {
       } catch (error) {
         expectErrorCode(error, 'SIGN_IN_IN_PROGRESS');
       }
-      
+
       // Wait for first to complete
       await firstPromise;
     });
 
     it('should clear iOS pending promises on sign out', async () => {
       await setupSignedInUser();
-      
+
       // Sign out should complete successfully
       await GoogleSignInModule.signOut();
-      
+
       // After sign out, sign in should be possible again
       expect(await GoogleSignInModule.isSignedIn()).toBe(false);
     });
 
     it('should handle iOS module destruction during pending operations', async () => {
       await setupConfiguredState();
-      
+
       // Simulate module destruction error
       const moduleDestroyedError = new Error('Module was destroyed') as any;
       moduleDestroyedError.code = 'MODULE_DESTROYED';
       mockGoogleSignIn.setError(moduleDestroyedError);
-      
+
       try {
         await GoogleSignInModule.signIn();
         fail('Expected sign in to throw');
@@ -288,9 +295,11 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS token refresh failures', async () => {
       await setupSignedInUser();
-      
+
       // Simulate iOS token refresh failure
-      const tokenError = new Error('Token refresh failed: Network connection') as any;
+      const tokenError = new Error(
+        'Token refresh failed: Network connection'
+      ) as any;
       tokenError.code = 'TOKEN_REFRESH_ERROR';
       mockGoogleSignIn.setError(tokenError);
 
@@ -304,8 +313,10 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS token refresh with no current user', async () => {
       await setupConfiguredState();
-      
-      const noUserError = new Error('No user signed in. Please sign in first.') as any;
+
+      const noUserError = new Error(
+        'No user signed in. Please sign in first.'
+      ) as any;
       noUserError.code = 'NO_USER';
       mockGoogleSignIn.setError(noUserError);
 
@@ -319,13 +330,13 @@ describe('iOS Native Module Tests', () => {
 
     it('should parse iOS user profile data correctly', async () => {
       await setupConfiguredState();
-      
+
       // Test with complete user data
       const completeUser = mockUsers.complete;
       mockGoogleSignIn.setSignedIn(completeUser);
 
       const result = await GoogleSignInModule.signIn();
-      
+
       expect(result.user.id).toBe(completeUser.id);
       expect(result.user.name).toBe(completeUser.name);
       expect(result.user.email).toBe(completeUser.email);
@@ -334,13 +345,13 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS user with null profile fields', async () => {
       await setupConfiguredState();
-      
+
       // Test with minimal user data (nulls)
       const minimalUser = mockUsers.minimal;
       mockGoogleSignIn.setSignedIn(minimalUser);
 
       const result = await GoogleSignInModule.signIn();
-      
+
       expect(result.user.id).toBe(minimalUser.id);
       expect(result.user.name).toBeNull();
       expect(result.user.email).toBe(minimalUser.email);
@@ -349,7 +360,7 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS profile image URL generation', async () => {
       await setupConfiguredState();
-      
+
       // User with profile image
       const userWithImage = {
         ...mockUsers.complete,
@@ -358,7 +369,7 @@ describe('iOS Native Module Tests', () => {
       mockGoogleSignIn.setSignedIn(userWithImage);
 
       const result = await GoogleSignInModule.signIn();
-      
+
       // Verify image URL contains dimension parameter (iOS specific)
       expect(result.user.photo).toContain('120');
     });
@@ -376,7 +387,7 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS sign out errors', async () => {
       await setupSignedInUser();
-      
+
       const signOutError = new Error('Sign-out failed: Network error') as any;
       signOutError.code = 'SIGN_OUT_ERROR';
       mockGoogleSignIn.setError(signOutError);
@@ -396,7 +407,7 @@ describe('iOS Native Module Tests', () => {
 
       // Verify signed-in state is cleared
       expect(await GoogleSignInModule.isSignedIn()).toBe(false);
-      
+
       // Configuration should still be maintained, so sign-in should work
       await expect(GoogleSignInModule.signIn()).resolves.toBeDefined();
     });
@@ -431,7 +442,7 @@ describe('iOS Native Module Tests', () => {
     it('should handle iOS Play Services check when Google SDK unavailable', async () => {
       // On iOS, Play Services availability should always return true
       // even when the Google SDK is not available, since iOS doesn't need Play Services
-      
+
       const isAvailable = await GoogleSignInModule.isPlayServicesAvailable();
 
       // Should return true since iOS doesn't need Play Services
@@ -442,9 +453,11 @@ describe('iOS Native Module Tests', () => {
   describe('iOS Error Handling & Exception Management', () => {
     it('should handle iOS configuration exceptions gracefully', async () => {
       const config = createMockConfig();
-      
+
       // Simulate iOS NSException during configuration
-      const nsException = new Error('Failed to configure Google Sign-In: Invalid configuration') as any;
+      const nsException = new Error(
+        'Failed to configure Google Sign-In: Invalid configuration'
+      ) as any;
       nsException.code = 'CONFIGURE_ERROR';
       mockGoogleSignIn.setError(nsException);
 
@@ -458,9 +471,11 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS sign-in exceptions gracefully', async () => {
       await setupConfiguredState();
-      
+
       // Simulate iOS NSException during sign-in
-      const nsException = new Error('Sign-in failed: Exception in signIn') as any;
+      const nsException = new Error(
+        'Sign-in failed: Exception in signIn'
+      ) as any;
       nsException.code = 'SIGN_IN_ERROR';
       mockGoogleSignIn.setError(nsException);
 
@@ -474,9 +489,11 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS token refresh exceptions gracefully', async () => {
       await setupSignedInUser();
-      
+
       // Simulate iOS NSException during token refresh
-      const nsException = new Error('Token refresh failed: Exception in getTokens') as any;
+      const nsException = new Error(
+        'Token refresh failed: Exception in getTokens'
+      ) as any;
       nsException.code = 'TOKEN_REFRESH_ERROR';
       mockGoogleSignIn.setError(nsException);
 
@@ -490,11 +507,14 @@ describe('iOS Native Module Tests', () => {
 
     it('should maintain iOS error code consistency with Android', async () => {
       await setupConfiguredState();
-      
+
       // Test all iOS error codes match expected values
       const errorMappings = [
         { iosError: 'NOT_CONFIGURED', message: 'Not configured' },
-        { iosError: 'SIGN_IN_IN_PROGRESS', message: 'Sign-in already in progress' },
+        {
+          iosError: 'SIGN_IN_IN_PROGRESS',
+          message: 'Sign-in already in progress',
+        },
         { iosError: 'USER_CANCELLED', message: 'User cancelled' },
         { iosError: 'NO_GOOGLE_ACCOUNTS', message: 'No Google accounts' },
         { iosError: 'SIGN_IN_ERROR', message: 'Sign-in error' },
@@ -522,12 +542,12 @@ describe('iOS Native Module Tests', () => {
   describe('iOS Integration Edge Cases', () => {
     it('should handle iOS memory pressure scenarios', async () => {
       await setupConfiguredState();
-      
-      // Test sequential rapid calls instead of true concurrency  
+
+      // Test sequential rapid calls instead of true concurrency
       // First call should succeed
       const firstResult = await GoogleSignInModule.signIn();
       expect(firstResult).toBeGoogleSignInResult();
-      
+
       // After first completes, subsequent calls should work too
       await GoogleSignInModule.signOut();
       const secondResult = await GoogleSignInModule.signIn();
@@ -536,11 +556,11 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS background/foreground state changes', async () => {
       await setupSignedInUser();
-      
+
       // Simulate app backgrounding during operation
       const tokens1 = await GoogleSignInModule.getTokens();
       expect(tokens1).toBeGoogleSignInTokens();
-      
+
       // Simulate app foregrounding - tokens should still work
       const tokens2 = await GoogleSignInModule.getTokens();
       expect(tokens2).toBeGoogleSignInTokens();
@@ -548,9 +568,11 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS view controller hierarchy changes', async () => {
       await setupConfiguredState();
-      
+
       // Simulate view controller presentation issues
-      const presentationError = new Error('No root view controller available') as any;
+      const presentationError = new Error(
+        'No root view controller available'
+      ) as any;
       presentationError.code = 'SIGN_IN_ERROR';
       mockGoogleSignIn.setError(presentationError);
 
@@ -564,9 +586,11 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS network connectivity changes during sign-in', async () => {
       await setupConfiguredState();
-      
+
       // Simulate network error during sign-in
-      const networkError = new Error('Sign-in failed: Network connection lost') as any;
+      const networkError = new Error(
+        'Sign-in failed: Network connection lost'
+      ) as any;
       networkError.code = 'SIGN_IN_ERROR';
       mockGoogleSignIn.setError(networkError);
 
@@ -623,22 +647,22 @@ describe('iOS Native Module Tests', () => {
 
     it('should handle iOS authentication flow with user profile updates', async () => {
       await setupConfiguredState();
-      
+
       // Sign in with initial profile
       const initialUser = mockUsers.complete;
       mockGoogleSignIn.setSignedIn(initialUser);
       const result1 = await GoogleSignInModule.signIn();
-      
+
       // Simulate profile update (new photo URL)
       const updatedUser = {
         ...initialUser,
         photo: 'https://lh3.googleusercontent.com/updated-photo-120',
       };
-      
+
       await GoogleSignInModule.signOut();
       mockGoogleSignIn.setSignedIn(updatedUser);
       const result2 = await GoogleSignInModule.signIn();
-      
+
       expect(result2.user.photo).toBe(updatedUser.photo);
       expect(result2.user.photo).not.toBe(result1.user.photo);
     });
