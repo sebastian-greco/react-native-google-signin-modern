@@ -10,10 +10,17 @@ export type GoogleSignInResult = Readonly<{
   }>;
 }>;
 
+export type GoogleSignInTokens = Readonly<{
+  idToken: string;
+  accessToken: string;
+}>;
+
 export interface Spec extends TurboModule {
   configure(webClientId: string): Promise<void>;
   isPlayServicesAvailable(): Promise<boolean>;
   signIn(): Promise<GoogleSignInResult>;
+  signInSilently(): Promise<GoogleSignInResult>;
+  getTokens(): Promise<GoogleSignInTokens>;
   signOut(): Promise<void>;
   isSignedIn(): Promise<boolean>;
 }

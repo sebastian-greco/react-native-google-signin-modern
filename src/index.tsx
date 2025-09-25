@@ -10,6 +10,11 @@ export interface GoogleSignInResult {
   };
 }
 
+export interface GoogleSignInTokens {
+  idToken: string;
+  accessToken: string;
+}
+
 export interface GoogleSignInConfig {
   webClientId: string;
 }
@@ -55,6 +60,38 @@ class GoogleSignIn {
         photo: nativeResult.user.photo ?? null,
       },
     };
+  }
+
+  /**
+   * Attempt to sign in silently (no UI shown)
+   * Useful for checking if user is already authenticated when app starts
+   */
+  async signInSilently(): Promise<GoogleSignInResult> {
+    if (!this.isConfigured) {
+      throw new Error('Google Sign-In not configured. Call configure() first.');
+    }
+    const nativeResult = await GoogleSigninModern.signInSilently();
+
+    // Normalize optional properties to ensure they are never undefined
+    return {
+      idToken: nativeResult.idToken,
+      user: {
+        id: nativeResult.user.id,
+        name: nativeResult.user.name ?? null,
+        email: nativeResult.user.email,
+        photo: nativeResult.user.photo ?? null,
+      },
+    };
+  }
+
+  /**
+   * Get fresh authentication tokens for the currently signed-in user
+   */
+  async getTokens(): Promise<GoogleSignInTokens> {
+    if (!this.isConfigured) {
+      throw new Error('Google Sign-In not configured. Call configure() first.');
+    }
+    return await GoogleSigninModern.getTokens();
   }
 
   /**

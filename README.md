@@ -70,6 +70,49 @@ try {
 }
 ```
 
+### Silent Sign In
+
+```typescript
+try {
+  // Try to sign in silently (no UI shown)
+  const result = await GoogleSignIn.signInSilently();
+  console.log('User signed in silently:', result.user);
+  // User was already authenticated
+} catch (error) {
+  if (error.code === 'SIGN_IN_REQUIRED') {
+    // No previous sign-in found, show sign-in UI
+    const result = await GoogleSignIn.signIn();
+  } else {
+    console.error('Silent sign in error:', error);
+  }
+}
+```
+
+### Token Management
+
+```typescript
+try {
+  // Get fresh tokens for API calls
+  const tokens = await GoogleSignIn.getTokens();
+  console.log('ID Token:', tokens.idToken);
+  console.log('Access Token:', tokens.accessToken);
+  
+  // Use tokens for authenticated API requests
+  const response = await fetch('https://api.example.com/user', {
+    headers: {
+      'Authorization': `Bearer ${tokens.accessToken}`
+    }
+  });
+} catch (error) {
+  if (error.code === 'NO_USER') {
+    // User needs to sign in first
+    const result = await GoogleSignIn.signIn();
+  } else {
+    console.error('Token refresh error:', error);
+  }
+}
+```
+
 ### Sign Out
 
 ```typescript
@@ -119,6 +162,21 @@ interface GoogleSignInResult {
 }
 ```
 
+#### `signInSilently(): Promise<GoogleSignInResult>`
+Attempt to sign in without showing UI. Useful for checking if user is already authenticated when app starts.
+
+Returns the same `GoogleSignInResult` as `signIn()` if successful, or throws `SIGN_IN_REQUIRED` error if user needs to sign in interactively.
+
+#### `getTokens(): Promise<GoogleSignInTokens>`
+Get fresh authentication tokens for the currently signed-in user.
+
+```typescript
+interface GoogleSignInTokens {
+  idToken: string;     // JWT token for backend verification
+  accessToken: string; // OAuth access token for Google APIs
+}
+```
+
 #### `signOut(): Promise<void>`
 Sign out the current user and clear authentication state.
 
@@ -146,8 +204,20 @@ try {
     case 'SIGN_IN_IN_PROGRESS':
       // Another sign-in is already in progress
       break;
+    case 'SIGN_IN_REQUIRED':
+      // Silent sign-in failed - user needs to sign in interactively
+      break;
+    case 'NO_USER':
+      // getTokens() called but no user is signed in
+      break;
+    case 'TOKEN_REFRESH_ERROR':
+      // Failed to refresh authentication tokens
+      break;
+    case 'USER_CANCELLED':
+      // User cancelled the sign-in dialog
+      break;
     case 'NO_ACTIVITY':
-      // No current activity available
+      // No current activity available (Android only)
       break;
     default:
       // Other sign-in errors
@@ -164,6 +234,58 @@ When no Google accounts are available on the device, the library automatically:
 3. Returns a user-friendly error message
 
 This provides a seamless user experience without requiring manual intervention.
+
+## Best Practices
+
+### App Startup Flow
+```typescript
+// Recommended app startup authentication flow
+async function initializeAuth() {
+  try {
+    // First, try silent sign-in
+    const user = await GoogleSignIn.signInSilently();
+    console.log('User already signed in:', user);
+    return user;
+  } catch (error) {
+    if (error.code === 'SIGN_IN_REQUIRED') {
+      // User needs to sign in - show sign-in button
+      console.log('User needs to sign in');
+      return null;
+    } else {
+      console.error('Silent sign-in error:', error);
+      return null;
+    }
+  }
+}
+```
+
+### Token Refresh for API Calls
+```typescript
+// Refresh tokens before making authenticated API requests
+async function makeAuthenticatedRequest(url: string) {
+  try {
+    const tokens = await GoogleSignIn.getTokens();
+    return fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${tokens.accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+  } catch (error) {
+    if (error.code === 'NO_USER') {
+      // Redirect to sign-in
+      throw new Error('User not signed in');
+    }
+    throw error;
+  }
+}
+```
+
+### Method Usage Guide
+- **`signInSilently()`**: Use on app startup to check existing authentication
+- **`signIn()`**: Use when user explicitly wants to sign in (button press)  
+- **`getTokens()`**: Use before making authenticated API requests
+- **`signOut()`**: Use when user explicitly wants to sign out
 
 ## Backend Integration
 

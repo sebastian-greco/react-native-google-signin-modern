@@ -50,6 +50,8 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
 		private const val ERROR_SIGN_OUT_ERROR = "SIGN_OUT_ERROR"
 		private const val ERROR_SIGN_OUT_REQUESTED = "SIGN_OUT_REQUESTED"
 		private const val ERROR_MODULE_DESTROYED = "MODULE_DESTROYED"
+		private const val ERROR_NO_USER = "NO_USER"
+		private const val ERROR_TOKEN_REFRESH_ERROR = "TOKEN_REFRESH_ERROR"
 		
 		// Credential types
 		private const val GOOGLE_ID_TOKEN_CREDENTIAL_TYPE = "com.google.android.libraries.identity.googleid.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL"
@@ -93,8 +95,36 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
     }
 
     override fun signIn(promise: Promise) {
+        performSignIn(
+            promise = promise,
+            flowType = SignInFlowType.INTERACTIVE,
+            logMessage = "Sign-in request initiated"
+        )
+    }
+
+    override fun signInSilently(promise: Promise) {
+        performSignIn(
+            promise = promise,
+            flowType = SignInFlowType.SILENT,
+            logMessage = "Silent sign-in request initiated"
+        )
+    }
+
+    /**
+     * Enum to define different sign-in flow types
+     */
+    private enum class SignInFlowType {
+        INTERACTIVE,    // Regular sign-in with fallback to all accounts
+        SILENT,         // Silent sign-in, authorized accounts only
+        TOKEN_REFRESH   // Token refresh, authorized accounts only
+    }
+
+    /**
+     * Unified sign-in method that handles all flow types
+     */
+    private fun performSignIn(promise: Promise, flowType: SignInFlowType, logMessage: String) {
         try {
-            Log.d(TAG, "Sign-in request initiated")
+            Log.d(TAG, logMessage)
             
             if (webClientId == null) {
                 promise.reject(ERROR_NOT_CONFIGURED, "Google Sign-In not configured. Call configure() first.")
@@ -123,13 +153,15 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
             // Store promise for callback
             pendingPromise = promise
 
-            Log.d(TAG, "Starting sign-in flow with authorized accounts filter")
-            // First attempt: Check for authorized accounts (existing sign-ins)
-            signInWithFilter(true)
+            Log.d(TAG, "Starting ${flowType.name.lowercase()} flow with authorized accounts")
+            // All flows start by checking authorized accounts first
+            performCredentialRequest(filterByAuthorizedAccounts = true, flowType = flowType)
 
         } catch (e: Exception) {
-            Log.e(TAG, "Exception in signIn", e)
-            clearPendingPromiseWithError(ERROR_SIGN_IN_ERROR, "Sign-in failed: ${e.message}", promise)
+            Log.e(TAG, "Exception in ${flowType.name.lowercase()}", e)
+            val errorCode = if (flowType == SignInFlowType.TOKEN_REFRESH) ERROR_TOKEN_REFRESH_ERROR else ERROR_SIGN_IN_ERROR
+            val errorMessage = "${flowType.name.lowercase()} failed: ${e.message}"
+            clearPendingPromiseWithError(errorCode, errorMessage, promise)
         }
     }
     
@@ -157,7 +189,10 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    private fun signInWithFilter(filterByAuthorizedAccounts: Boolean) {
+    /**
+     * Unified credential request method that handles all flow types
+     */
+    private fun performCredentialRequest(filterByAuthorizedAccounts: Boolean, flowType: SignInFlowType) {
         val currentActivity = reactApplicationContext.currentActivity ?: return
 
         val googleIdOption = GetGoogleIdOption.Builder()
@@ -170,7 +205,7 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
             .build()
 
         val filterType = if (filterByAuthorizedAccounts) "authorized accounts" else "all accounts"
-        Log.d(TAG, "Starting credential request with filter: $filterType")
+        Log.d(TAG, "Starting credential request with filter: $filterType (${flowType.name})")
 
         // Use coroutines for async operation
         CoroutineScope(Dispatchers.Main).launch {
@@ -180,54 +215,100 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
                     context = currentActivity
                 )
 
-                Log.d(TAG, "Credential result received")
+                Log.d(TAG, "Credential result received for ${flowType.name}")
                 Log.d(TAG, "Credential type: ${result.credential.type}")
-                Log.d(TAG, "Credential class: ${result.credential.javaClass.name}")
 
                 when (val credential = result.credential) {
                     is GoogleIdTokenCredential -> {
-                        Log.d(TAG, "Google ID token credential received (instanceof)")
+                        Log.d(TAG, "Google ID token credential received (instanceof) for ${flowType.name}")
                         
-                        val response = createSignInResponse(credential)
+                        val response = createResponseForFlowType(credential, flowType)
                         pendingPromise?.resolve(response)
                         pendingPromise = null
                     }
                     else -> {
                         // Handle Google ID Token credential by type string
                         if (credential.type == GOOGLE_ID_TOKEN_CREDENTIAL_TYPE) {
-                            Log.d(TAG, "Google ID token credential received (by type)")
+                            Log.d(TAG, "Google ID token credential received (by type) for ${flowType.name}")
                             try {
                                 val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                                val response = createSignInResponse(googleCredential)
+                                val response = createResponseForFlowType(googleCredential, flowType)
                                 pendingPromise?.resolve(response)
                                 pendingPromise = null
                             } catch (parseError: Exception) {
-                                Log.e(TAG, "Failed to parse Google credential", parseError)
-                                clearPendingPromiseWithError(ERROR_CREDENTIAL_PARSE_ERROR, "Failed to parse Google credential: ${parseError.message}")
+                                Log.e(TAG, "Failed to parse Google credential for ${flowType.name}", parseError)
+                                val errorCode = if (flowType == SignInFlowType.TOKEN_REFRESH) ERROR_TOKEN_REFRESH_ERROR else ERROR_CREDENTIAL_PARSE_ERROR
+                                clearPendingPromiseWithError(errorCode, "Failed to parse Google credential: ${parseError.message}")
                             }
                         } else {
-                            Log.e(TAG, "Unexpected credential type: ${credential.type}")
-                            Log.d(TAG, "Credential class: ${credential.javaClass.name}")
-                            Log.d(TAG, "Available credential data: ${credential.data}")
-                            clearPendingPromiseWithError(ERROR_UNEXPECTED_CREDENTIAL, "Unexpected credential type: ${credential.type}")
+                            Log.e(TAG, "Unexpected credential type for ${flowType.name}: ${credential.type}")
+                            val errorCode = if (flowType == SignInFlowType.TOKEN_REFRESH) ERROR_TOKEN_REFRESH_ERROR else ERROR_UNEXPECTED_CREDENTIAL
+                            clearPendingPromiseWithError(errorCode, "Unexpected credential type: ${credential.type}")
                         }
                     }
                 }
 
             } catch (e: GetCredentialException) {
-                Log.e(TAG, "GetCredentialException: ${e.type} - ${e.message}")
-                
-                // Handle the case where no credentials are available
+                Log.e(TAG, "GetCredentialException for ${flowType.name}: ${e.type} - ${e.message}")
+                handleCredentialException(e, filterByAuthorizedAccounts, flowType)
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception in performCredentialRequest for ${flowType.name}", e)
+                val errorCode = if (flowType == SignInFlowType.TOKEN_REFRESH) ERROR_TOKEN_REFRESH_ERROR else ERROR_SIGN_IN_ERROR
+                clearPendingPromiseWithError(errorCode, "${flowType.name} failed: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Create appropriate response based on flow type
+     */
+    private fun createResponseForFlowType(credential: GoogleIdTokenCredential, flowType: SignInFlowType): WritableMap {
+        return when (flowType) {
+            SignInFlowType.TOKEN_REFRESH -> {
+                // For token refresh, return tokens format
+                Arguments.createMap().apply {
+                    putString("idToken", credential.idToken)
+                    // Note: Credential Manager doesn't provide access tokens
+                    // Access tokens would need to be obtained separately via Google APIs
+                    putString("accessToken", "")
+                }
+            }
+            else -> {
+                // For sign-in flows, return user info format
+                createSignInResponse(credential)
+            }
+        }
+    }
+
+    /**
+     * Handle credential exceptions based on flow type
+     */
+    private fun handleCredentialException(e: GetCredentialException, filterByAuthorizedAccounts: Boolean, flowType: SignInFlowType) {
+        when (flowType) {
+            SignInFlowType.INTERACTIVE -> {
+                // Interactive sign-in can retry with all accounts if authorized accounts fail
                 if (filterByAuthorizedAccounts && e.type == NO_CREDENTIAL_EXCEPTION_TYPE) {
                     Log.d(TAG, "No authorized accounts found, retrying with all accounts")
-                    // Retry with all accounts (allows sign-up flow)
-                    signInWithFilter(false)
+                    performCredentialRequest(filterByAuthorizedAccounts = false, flowType = flowType)
                 } else {
                     handleNoAccountsError(e)
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Exception in signInWithFilter", e)
-                clearPendingPromiseWithError(ERROR_SIGN_IN_ERROR, "Sign-in failed: ${e.message}")
+            }
+            SignInFlowType.SILENT -> {
+                // Silent sign-in returns SIGN_IN_REQUIRED if no authorized accounts
+                if (e.type == NO_CREDENTIAL_EXCEPTION_TYPE || e is NoCredentialException) {
+                    clearPendingPromiseWithError("SIGN_IN_REQUIRED", "The user has never signed in before, or they have since signed out.")
+                } else {
+                    clearPendingPromiseWithError(ERROR_SIGN_IN_ERROR, "Silent sign-in failed: ${e.message}")
+                }
+            }
+            SignInFlowType.TOKEN_REFRESH -> {
+                // Token refresh returns NO_USER if no authorized accounts
+                if (e.type == NO_CREDENTIAL_EXCEPTION_TYPE || e is NoCredentialException) {
+                    clearPendingPromiseWithError(ERROR_NO_USER, "No user signed in. Please sign in first.")
+                } else {
+                    clearPendingPromiseWithError(ERROR_TOKEN_REFRESH_ERROR, "Token refresh failed: ${e.message}")
+                }
             }
         }
     }
@@ -299,6 +380,18 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         // The app should manage this through its own authentication state
         Log.d(TAG, "isSignedIn called - returning false (app should manage auth state)")
         promise.resolve(false)
+    }
+
+    override fun getTokens(promise: Promise) {
+        // With Credential Manager, we don't maintain persistent tokens
+        // Need to trigger a new sign-in flow to get fresh tokens
+        Log.w(TAG, "getTokens called - Credential Manager doesn't maintain persistent tokens")
+        
+        performSignIn(
+            promise = promise,
+            flowType = SignInFlowType.TOKEN_REFRESH,
+            logMessage = "Token refresh request initiated"
+        )
     }
 
     override fun invalidate() {
