@@ -216,6 +216,20 @@ describe('GoogleSignInModule', () => {
       );
     });
 
+    it('should handle users with null name and photo in silent sign in', async () => {
+      await setupConfiguredState();
+      const userWithNulls = mockUsers.minimal;
+      mockGoogleSignIn.setSignedIn(userWithNulls);
+
+      const result = await GoogleSignInModule.signInSilently();
+
+      expect(result.user.name).toBeNull();
+      expect(result.user.photo).toBeNull();
+      expect(result.user.id).toBe(userWithNulls.id);
+      expect(result.user.email).toBe(userWithNulls.email);
+      expectMockCallCounts({ signInSilently: 1 });
+    });
+
     it('should handle silent sign in errors', async () => {
       await setupConfiguredState();
       await setupErrorScenario(mockErrors.noSignedInUser);
