@@ -15,6 +15,7 @@ import org.junit.runner.RunWith
 import org.mockito.Mock
 import org.mockito.MockedStatic
 import org.mockito.Mockito.*
+import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -52,6 +53,7 @@ class GoogleSigninModernModuleErrorHandlingTest {
 
     @Before
     fun setup() {
+        MockitoAnnotations.openMocks(this)
         module = GoogleSigninModernModule(mockReactContext)
         whenever(mockReactContext.currentActivity).thenReturn(mockActivity)
         whenever(mockReactContext.packageName).thenReturn("com.test.package")

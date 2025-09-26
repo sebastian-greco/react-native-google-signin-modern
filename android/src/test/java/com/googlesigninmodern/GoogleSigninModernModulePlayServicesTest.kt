@@ -10,6 +10,7 @@ import org.junit.runner.RunWith
 import org.mockito.Mock
 import org.mockito.MockedStatic
 import org.mockito.Mockito.*
+import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.robolectric.RobolectricTestRunner
@@ -35,6 +36,7 @@ class GoogleSigninModernModulePlayServicesTest {
 
     @Before
     fun setup() {
+        MockitoAnnotations.openMocks(this)
         module = GoogleSigninModernModule(mockReactContext)
         whenever(mockReactContext.packageName).thenReturn("com.test.package")
     }
@@ -240,7 +242,7 @@ class GoogleSigninModernModulePlayServicesTest {
             module.isPlayServicesAvailable(mockPromise)
 
             // Then - verify correct API calls
-            verify(GoogleApiAvailability::class.java).getInstance()
+            verify { GoogleApiAvailability.getInstance() }
             verify(mockGoogleApiAvailability).isGooglePlayServicesAvailable(mockReactContext)
         }
     }

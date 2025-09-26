@@ -19,6 +19,7 @@ import org.junit.runner.RunWith
 import org.mockito.Mock
 import org.mockito.MockedStatic
 import org.mockito.Mockito.*
+import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -67,6 +68,9 @@ class GoogleSigninModernModuleTest {
 
     @Before
     fun setup() {
+        // Initialize mocks
+        MockitoAnnotations.openMocks(this)
+        
         // Initialize module with mocked context
         module = GoogleSigninModernModule(mockReactContext)
 

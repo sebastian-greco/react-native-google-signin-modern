@@ -17,6 +17,7 @@ import org.junit.runner.RunWith
 import org.mockito.Mock
 import org.mockito.MockedStatic
 import org.mockito.Mockito.*
+import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.times
@@ -66,6 +67,7 @@ class GoogleSigninModernModuleFlowTest {
 
     @Before
     fun setup() {
+        MockitoAnnotations.openMocks(this)
         module = GoogleSigninModernModule(mockReactContext)
         whenever(mockReactContext.currentActivity).thenReturn(mockActivity)
         whenever(mockReactContext.packageName).thenReturn("com.test.package")
@@ -92,21 +94,36 @@ class GoogleSigninModernModuleFlowTest {
     @Test
     fun `signIn should start with authorized accounts first`() {
         // Given
-        setupConfiguredModule()
-        val successFuture = CompletableFuture.completedFuture(mockGetCredentialResponse)
-        whenever(mockCredentialManager.getCredential(any<GetCredentialRequest>(), any<Activity>()))
-            .thenReturn(successFuture)
+        mockStatic(Arguments::class.java).use { mockedArguments ->
+            mockStatic(GetGoogleIdOption::class.java).use { mockedOptions ->
+                whenever(Arguments.createMap()).thenReturn(mockWritableMap, mock<WritableMap>())
+                
+                val mockBuilder = mock<GetGoogleIdOption.Builder>()
+                val mockOption = mock<GetGoogleIdOption>()
+                
+                whenever(GetGoogleIdOption.Builder()).thenReturn(mockBuilder)
+                whenever(mockBuilder.setServerClientId(any<String>())).thenReturn(mockBuilder)
+                whenever(mockBuilder.setFilterByAuthorizedAccounts(any<Boolean>())).thenReturn(mockBuilder)
+                whenever(mockBuilder.build()).thenReturn(mockOption)
+                
+                mockStaticCredentialManager {
+                    whenever(CredentialManager.create(mockReactContext)).thenReturn(mockCredentialManager)
+                    module.configure(VALID_CLIENT_ID, mock())
+                    
+                    val successFuture = CompletableFuture.completedFuture(mockGetCredentialResponse)
+                    whenever(mockCredentialManager.getCredential(any<GetCredentialRequest>(), any<Activity>()))
+                        .thenReturn(successFuture)
 
-        // When
-        module.signIn(mockPromise)
+                    // When
+                    module.signIn(mockPromise)
 
-        // Then - verify credential manager called with correct filter
-        val requestCaptor = argumentCaptor<GetCredentialRequest>()
-        verify(mockCredentialManager).getCredential(requestCaptor.capture(), eq(mockActivity))
-        
-        // Verify the request was made (we can't easily inspect GetCredentialRequest internals)
-        // but we can verify the call was made
-        assert(requestCaptor.firstValue != null)
+                    // Then - verify credential manager was called and builder was configured correctly
+                    verify(mockCredentialManager).getCredential(any<GetCredentialRequest>(), eq(mockActivity))
+                    verify(mockBuilder).setFilterByAuthorizedAccounts(true)
+                    verify(mockBuilder).setServerClientId(VALID_CLIENT_ID)
+                }
+            }
+        }
     }
 
     @Test
@@ -265,23 +282,32 @@ class GoogleSigninModernModuleFlowTest {
     @Test
     fun `should allow new operations after previous operation completes`() {
         // Given
-        setupConfiguredModule()
-        val firstPromise = mock<Promise>()
-        val secondPromise = mock<Promise>()
+        mockStatic(Arguments::class.java).use { mockedArguments ->
+            whenever(Arguments.createMap()).thenReturn(mockWritableMap, mock<WritableMap>())
+            
+            mockStaticCredentialManager {
+                whenever(CredentialManager.create(mockReactContext)).thenReturn(mockCredentialManager)
+                module.configure(VALID_CLIENT_ID, mock())
+                
+                val firstPromise = mock<Promise>()
+                val secondPromise = mock<Promise>()
 
-        val successFuture = CompletableFuture.completedFuture(mockGetCredentialResponse)
-        whenever(mockCredentialManager.getCredential(any<GetCredentialRequest>(), any<Activity>()))
-            .thenReturn(successFuture)
+                val successFuture = CompletableFuture.completedFuture(mockGetCredentialResponse)
+                whenever(mockCredentialManager.getCredential(any<GetCredentialRequest>(), any<Activity>()))
+                    .thenReturn(successFuture)
 
-        // Start and let first operation complete
-        module.signIn(firstPromise)
+                // Start first operation and verify it completes
+                module.signIn(firstPromise)
+                verify(firstPromise).resolve(any<WritableMap>())
 
-        // When - start second operation (should be allowed)
-        module.signInSilently(secondPromise)
+                // When - start second operation (should be allowed after first completes)
+                module.signInSilently(secondPromise)
 
-        // Then - both operations should be processed
-        verify(mockCredentialManager, times(2))
-            .getCredential(any<GetCredentialRequest>(), any<Activity>())
+                // Then - both operations should be processed
+                verify(mockCredentialManager, times(2))
+                    .getCredential(any<GetCredentialRequest>(), any<Activity>())
+            }
+        }
     }
 
     // ========================================
@@ -367,13 +393,11 @@ class GoogleSigninModernModuleFlowTest {
     // ========================================
 
     private fun setupConfiguredModule() {
-        mockStatic(Arguments::class.java).use { mockedArguments ->
-            whenever(Arguments.createMap()).thenReturn(mockWritableMap)
-            
-            mockStaticCredentialManager {
-                whenever(CredentialManager.create(mockReactContext)).thenReturn(mockCredentialManager)
-                module.configure(VALID_CLIENT_ID, mock())
-            }
+        // Note: This method is deprecated in favor of inline static mock handling
+        // Use mockStatic blocks directly in test methods for proper lifecycle management
+        mockStaticCredentialManager {
+            whenever(CredentialManager.create(mockReactContext)).thenReturn(mockCredentialManager)
+            module.configure(VALID_CLIENT_ID, mock())
         }
     }
 
