@@ -170,9 +170,9 @@ jobs:
             example/ios/Pods
             example/vendor/bundle
             ~/.cocoapods/repos
-          key: ${{ runner.os }}-cocoapods-${{ hashFiles('example/ios/Podfile.lock', 'example/Gemfile.lock') }}
+          key: ${{ runner.os }}-cocoapods-cache-${{ hashFiles('example/ios/Podfile.lock', 'example/Gemfile.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cocoapods-
+            ${{ runner.os }}-cocoapods-cache-
 
       - name: Install cocoapods
         if: env.turbo_cache_hit != 1 && steps.cocoapods-cache.outputs.cache-hit != 'true'
