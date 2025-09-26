@@ -6,12 +6,13 @@ This guide covers the comprehensive testing infrastructure established for the R
 
 The testing infrastructure provides:
 
-- **68 comprehensive tests** across multiple test suites
+- **108 comprehensive tests** across multiple specialized test suites
 - **100% statement and function coverage**
 - **88.88% branch coverage** (exceeding industry standards)
 - **Robust mocking strategies** for native module testing
 - **Custom Jest matchers** for Google Sign-In specific assertions
 - **Test utilities and factories** for consistent test data
+- **Platform-specific test coverage** for iOS native implementation
 - **CI/CD integration** with GitHub Actions
 
 ## 🧪 Test Structure
@@ -21,6 +22,7 @@ The testing infrastructure provides:
 - **`src/__tests__/index.test.tsx`** - Main API functionality tests (35 tests)
 - **`src/__tests__/error-scenarios.test.tsx`** - Comprehensive error handling tests (16 tests)  
 - **`src/__tests__/native-module.test.tsx`** - Native module interface tests (17 tests)
+- **`src/__tests__/ios-native-module.test.tsx`** - iOS-specific native module tests (40 tests)
 
 ### Supporting Files
 
@@ -78,6 +80,9 @@ yarn test src/__tests__/error-scenarios.test.tsx
 # Run native module tests only
 yarn test src/__tests__/native-module.test.tsx
 
+# Run iOS-specific native module tests only
+yarn test src/__tests__/ios-native-module.test.tsx
+
 # Run tests matching a pattern
 yarn test --testNamePattern="sign in"
 ```
@@ -91,6 +96,8 @@ The native module mock (`NativeGoogleSigninModern`) provides:
 - **Controllable state** - Configure mock responses and errors
 - **Realistic simulation** - Generate proper response structures
 - **Error scenarios** - Simulate various error conditions with proper error codes
+- **Platform-specific behavior** - iOS-specific error handling and state management
+- **Concurrency control** - Proper handling of concurrent operations
 - **State tracking** - Monitor configuration and sign-in states
 - **Call verification** - Track method calls for testing
 
@@ -190,6 +197,40 @@ expectMockCallCounts({
   signIn: 1,
   signOut: 1
 });
+```
+
+## 📱 iOS-Specific Testing
+
+### iOS Native Module Tests
+
+The iOS-specific test suite (`ios-native-module.test.tsx`) provides comprehensive coverage of iOS native implementation:
+
+**Test Categories:**
+- **Module Initialization & Configuration** (5 tests) - iOS-specific configuration and GIDSignIn setup
+- **Google Sign-In SDK Integration** (5 tests) - iOS view controller presentation and SDK interactions
+- **Silent Sign-In Flow** (3 tests) - iOS restorePreviousSignIn behavior
+- **Promise Management & Concurrency** (4 tests) - iOS-specific promise handling and concurrent operation prevention
+- **Token Management & User Data** (6 tests) - iOS token refresh and user profile parsing
+- **Sign Out & State Management** (5 tests) - iOS state clearing and sign-out behavior
+- **Play Services Availability** (2 tests) - iOS-specific Play Services handling (always true)
+- **Error Handling & Exception Management** (4 tests) - iOS NSException handling and error code consistency
+- **Integration Edge Cases** (4 tests) - iOS memory pressure, background/foreground, and network scenarios
+- **Complete Integration Flows** (2 tests) - End-to-end iOS authentication workflows
+
+**iOS-Specific Features Tested:**
+```typescript
+// iOS view controller presentation simulation
+mockGoogleSignIn.setState({ signInDelay: 50 });
+
+// iOS-specific error codes
+expectErrorCode(error, 'USER_CANCELLED'); // kGIDSignInErrorCodeCanceled
+expectErrorCode(error, 'NO_GOOGLE_ACCOUNTS'); // kGIDSignInErrorCodeHasNoAuthInKeychain
+
+// iOS concurrency control
+expect(error.code).toBe('SIGN_IN_IN_PROGRESS');
+
+// iOS token extraction from JWT
+expect(result.user.id).toBe('stable-user-id-from-sub-claim');
 ```
 
 ### Custom Jest Matchers
