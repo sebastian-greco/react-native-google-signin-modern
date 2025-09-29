@@ -17,6 +17,7 @@ interface MockState {
   shouldThrow: boolean;
   throwError?: Error;
   signInDelay?: number;
+  signInInProgress: boolean;
 }
 
 const defaultMockState: MockState = {
@@ -25,6 +26,7 @@ const defaultMockState: MockState = {
   isSignedIn: false,
   currentUser: null,
   shouldThrow: false,
+  signInInProgress: false,
 };
 
 let mockState = { ...defaultMockState };
@@ -59,33 +61,47 @@ const mockNativeModule = {
       throw new Error('Not configured');
     }
 
+    if (mockState.signInInProgress) {
+      const error = new Error('Sign-in already in progress') as any;
+      error.code = 'SIGN_IN_IN_PROGRESS';
+      throw error;
+    }
+
     if (!mockState.isPlayServicesAvailable) {
       const error = new Error('Google Play Services not available') as any;
       error.code = 'PLAY_SERVICES_NOT_AVAILABLE';
       throw error;
     }
 
-    // Simulate delay if specified
-    if (mockState.signInDelay) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, mockState.signInDelay)
-      );
+    // Set sign in as in progress
+    mockState.signInInProgress = true;
+
+    try {
+      // Simulate delay if specified
+      if (mockState.signInDelay) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, mockState.signInDelay)
+        );
+      }
+
+      const user = mockState.currentUser || {
+        id: 'test@example.com',
+        email: 'test@example.com',
+        name: 'Test User',
+        photo: 'https://example.com/photo.jpg',
+      };
+
+      mockState.isSignedIn = true;
+      mockState.currentUser = user;
+
+      return {
+        idToken: 'mock-id-token-' + Date.now() + '-' + Math.random(),
+        user,
+      };
+    } finally {
+      // Clear sign in progress flag
+      mockState.signInInProgress = false;
     }
-
-    const user = mockState.currentUser || {
-      id: 'test@example.com',
-      email: 'test@example.com',
-      name: 'Test User',
-      photo: 'https://example.com/photo.jpg',
-    };
-
-    mockState.isSignedIn = true;
-    mockState.currentUser = user;
-
-    return {
-      idToken: 'mock-id-token-' + Date.now() + '-' + Math.random(),
-      user,
-    };
   }),
 
   signInSilently: jest.fn(async (): Promise<GoogleSignInResult> => {
@@ -97,16 +113,37 @@ const mockNativeModule = {
       throw new Error('Not configured');
     }
 
+    if (mockState.signInInProgress) {
+      const error = new Error('Sign-in already in progress') as any;
+      error.code = 'SIGN_IN_IN_PROGRESS';
+      throw error;
+    }
+
     if (!mockState.isSignedIn || !mockState.currentUser) {
       const error = new Error('No signed in user') as any;
       error.code = 'NO_SIGNED_IN_USER';
       throw error;
     }
 
-    return {
-      idToken: 'mock-silent-id-token-' + Date.now() + '-' + Math.random(),
-      user: mockState.currentUser,
-    };
+    // Set sign in as in progress
+    mockState.signInInProgress = true;
+
+    try {
+      // Simulate delay if specified
+      if (mockState.signInDelay) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, mockState.signInDelay)
+        );
+      }
+
+      return {
+        idToken: 'mock-silent-id-token-' + Date.now() + '-' + Math.random(),
+        user: mockState.currentUser,
+      };
+    } finally {
+      // Clear sign in progress flag
+      mockState.signInInProgress = false;
+    }
   }),
 
   getTokens: jest.fn(async (): Promise<GoogleSignInTokens> => {
@@ -137,6 +174,7 @@ const mockNativeModule = {
 
     mockState.isSignedIn = false;
     mockState.currentUser = null;
+    mockState.signInInProgress = false; // Clear any pending sign-in operations
   }),
 
   isSignedIn: jest.fn(async (): Promise<boolean> => {
