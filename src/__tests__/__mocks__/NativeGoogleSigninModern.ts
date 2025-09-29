@@ -35,23 +35,25 @@ let mockState = { ...defaultMockState };
 
 // Mock implementation
 const mockNativeModule = {
-  configure: jest.fn(async (
-    webClientId: string,
-    scopes?: string[] | null,
-    offlineAccess?: boolean | null
-  ): Promise<void> => {
-    if (mockState.shouldThrow) {
-      throw mockState.throwError || new Error('Configure failed');
-    }
+  configure: jest.fn(
+    async (
+      webClientId: string,
+      scopes?: string[] | null,
+      offlineAccess?: boolean | null
+    ): Promise<void> => {
+      if (mockState.shouldThrow) {
+        throw mockState.throwError || new Error('Configure failed');
+      }
 
-    if (!webClientId || typeof webClientId !== 'string') {
-      throw new Error('Invalid web client ID');
-    }
+      if (!webClientId || typeof webClientId !== 'string') {
+        throw new Error('Invalid web client ID');
+      }
 
-    mockState.isConfigured = true;
-    mockState.configuredScopes = scopes || ['openid', 'email', 'profile'];
-    mockState.offlineAccess = offlineAccess || false;
-  }),
+      mockState.isConfigured = true;
+      mockState.configuredScopes = scopes || ['openid', 'email', 'profile'];
+      mockState.offlineAccess = offlineAccess || false;
+    }
+  ),
 
   isPlayServicesAvailable: jest.fn(async (): Promise<boolean> => {
     if (mockState.shouldThrow) {
@@ -107,7 +109,9 @@ const mockNativeModule = {
         user,
         scopes: mockState.configuredScopes || ['openid', 'email', 'profile'],
         accessToken: 'mock-access-token-' + Date.now() + '-' + Math.random(),
-        serverAuthCode: mockState.offlineAccess ? 'mock-server-auth-code' : undefined,
+        serverAuthCode: mockState.offlineAccess
+          ? 'mock-server-auth-code'
+          : undefined,
       };
     } finally {
       // Clear sign in progress flag
@@ -152,7 +156,9 @@ const mockNativeModule = {
         user: mockState.currentUser,
         scopes: mockState.configuredScopes || ['openid', 'email', 'profile'],
         accessToken: 'mock-access-token-' + Date.now() + '-' + Math.random(),
-        serverAuthCode: mockState.offlineAccess ? 'mock-server-auth-code' : undefined,
+        serverAuthCode: mockState.offlineAccess
+          ? 'mock-server-auth-code'
+          : undefined,
       };
     } finally {
       // Clear sign in progress flag

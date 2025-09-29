@@ -21,8 +21,8 @@ export type GoogleSignInTokens = Readonly<{
 
 export interface Spec extends TurboModule {
   configure(
-    webClientId: string, 
-    scopes?: string[] | null, 
+    webClientId: string,
+    scopes?: string[] | null,
     offlineAccess?: boolean | null
   ): Promise<void>;
   isPlayServicesAvailable(): Promise<boolean>;
