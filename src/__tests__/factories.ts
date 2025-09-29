@@ -40,6 +40,7 @@ export const createMockSignInResult = (
   return {
     idToken: `mock-id-token-${id}-${Date.now()}`,
     user: createMockUser(userOverrides),
+    nonce: null,
     ...resultOverrides,
   };
 };

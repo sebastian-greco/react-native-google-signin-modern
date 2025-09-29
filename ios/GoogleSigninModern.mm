@@ -37,6 +37,7 @@
 @property (nonatomic, copy) void (^pendingResolve)(id result);
 @property (nonatomic, copy) void (^pendingReject)(NSString *code, NSString *message, NSError *error);
 @property (nonatomic, assign) BOOL signInInProgress;
+@property (nonatomic, copy) NSString *currentNonce;
 @end
 
 @implementation GoogleSigninModern
@@ -55,6 +56,9 @@ static NSString * const ERROR_MODULE_DESTROYED = @"MODULE_DESTROYED";
 static NSString * const ERROR_USER_CANCELLED = @"USER_CANCELLED";
 static NSString * const ERROR_NO_USER = @"NO_USER";
 static NSString * const ERROR_TOKEN_REFRESH_ERROR = @"TOKEN_REFRESH_ERROR";
+
+static NSString * const ERROR_NONCE_ERROR = @"NONCE_ERROR";
+static NSString * const ERROR_NONCE_VALIDATION_ERROR = @"NONCE_VALIDATION_ERROR";
 
 - (instancetype)init {
     if (self = [super init]) {
@@ -103,7 +107,8 @@ RCT_EXPORT_METHOD(isPlayServicesAvailable:(RCTPromiseResolveBlock)resolve
     resolve(@YES);
 }
 
-RCT_EXPORT_METHOD(signIn:(RCTPromiseResolveBlock)resolve
+RCT_EXPORT_METHOD(signIn:(NSString *)nonce
+                  resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     @try {
         RCTLogInfo(@"Sign-in request initiated");
@@ -113,16 +118,26 @@ RCT_EXPORT_METHOD(signIn:(RCTPromiseResolveBlock)resolve
             return;
         }
         
+        // Validate nonce if provided
+        if (nonce) {
+            NSError *validationError = [self validateNonce:nonce];
+            if (validationError) {
+                reject(ERROR_NONCE_ERROR, validationError.localizedDescription, validationError);
+                return;
+            }
+        }
+        
         if (self.signInInProgress) {
             RCTLogWarn(@"Sign-in already in progress, rejecting new request");
             reject(ERROR_SIGN_IN_IN_PROGRESS, @"Sign-in already in progress", nil);
             return;
         }
         
-        // Store promise callbacks
+        // Store promise callbacks and nonce
         self.pendingResolve = resolve;
         self.pendingReject = reject;
         self.signInInProgress = YES;
+        self.currentNonce = nonce;
         
 #if HAS_GOOGLE_SIGNIN
         // Get the root view controller
@@ -137,7 +152,7 @@ RCT_EXPORT_METHOD(signIn:(RCTPromiseResolveBlock)resolve
         [[GIDSignIn sharedInstance] signInWithPresentingViewController:rootViewController
                                                             completion:^(GIDSignInResult *result, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self handleSignInResult:result error:error];
+                [self handleSignInResult:result error:error nonce:nonce];
             });
         }];
 #else
@@ -152,7 +167,8 @@ RCT_EXPORT_METHOD(signIn:(RCTPromiseResolveBlock)resolve
     }
 }
 
-RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
+RCT_EXPORT_METHOD(signInSilently:(NSString *)nonce
+                  resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     @try {
         RCTLogInfo(@"Silent sign-in request initiated");
@@ -162,16 +178,26 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
             return;
         }
         
+        // Validate nonce if provided
+        if (nonce) {
+            NSError *validationError = [self validateNonce:nonce];
+            if (validationError) {
+                reject(ERROR_NONCE_ERROR, validationError.localizedDescription, validationError);
+                return;
+            }
+        }
+        
         if (self.signInInProgress) {
             RCTLogWarn(@"Sign-in already in progress, rejecting silent sign-in request");
             reject(ERROR_SIGN_IN_IN_PROGRESS, @"Sign-in already in progress", nil);
             return;
         }
         
-        // Store promise callbacks
+        // Store promise callbacks and nonce
         self.pendingResolve = resolve;
         self.pendingReject = reject;
         self.signInInProgress = YES;
+        self.currentNonce = nonce;
         
 #if HAS_GOOGLE_SIGNIN
         RCTLogInfo(@"Attempting to restore previous Google Sign-In");
@@ -179,7 +205,7 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
         // Attempt to restore previous sign-in silently
         [[GIDSignIn sharedInstance] restorePreviousSignInWithCompletion:^(GIDGoogleUser *user, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self handleSilentSignInResult:user error:error];
+                [self handleSilentSignInResult:user error:error nonce:nonce];
             });
         }];
 #else
@@ -195,7 +221,7 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
 }
 
 #if HAS_GOOGLE_SIGNIN
-- (void)handleSignInResult:(GIDSignInResult *)result error:(NSError *)error {
+- (void)handleSignInResult:(GIDSignInResult *)result error:(NSError *)error nonce:(NSString *)nonce {
     self.signInInProgress = NO;
     
     if (error) {
@@ -218,6 +244,15 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
         return;
     }
     
+    // Validate nonce in ID token if provided
+    if (nonce) {
+        NSError *nonceValidationError = [self validateNonceInIdToken:result.user.idToken.tokenString expectedNonce:nonce];
+        if (nonceValidationError) {
+            [self clearPendingPromiseWithError:ERROR_NONCE_VALIDATION_ERROR message:nonceValidationError.localizedDescription];
+            return;
+        }
+    }
+    
     // Create response matching Android format
     GIDGoogleUser *user = result.user;
     GIDProfileData *profile = user.profile;
@@ -232,19 +267,24 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
         @"photo": profile.hasImage ? [profile imageURLWithDimension:120].absoluteString : [NSNull null]
     };
     
-    NSDictionary *response = @{
+    NSMutableDictionary *response = [@{
         @"idToken": user.idToken.tokenString ?: @"",
         @"user": userDict
-    };
+    } mutableCopy];
+    
+    // Add nonce to response if provided
+    if (nonce) {
+        response[@"nonce"] = nonce;
+    }
     
     RCTLogInfo(@"Google Sign-In successful");
     if (self.pendingResolve) {
-        self.pendingResolve(response);
+        self.pendingResolve([response copy]);
     }
     [self clearPendingPromise];
 }
 
-- (void)handleSilentSignInResult:(GIDGoogleUser *)user error:(NSError *)error {
+- (void)handleSilentSignInResult:(GIDGoogleUser *)user error:(NSError *)error nonce:(NSString *)nonce {
     self.signInInProgress = NO;
     
     if (error) {
@@ -265,6 +305,15 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
         return;
     }
     
+    // Validate nonce in ID token if provided
+    if (nonce) {
+        NSError *nonceValidationError = [self validateNonceInIdToken:user.idToken.tokenString expectedNonce:nonce];
+        if (nonceValidationError) {
+            [self clearPendingPromiseWithError:ERROR_NONCE_VALIDATION_ERROR message:nonceValidationError.localizedDescription];
+            return;
+        }
+    }
+    
     // Create response matching Android format
     GIDProfileData *profile = user.profile;
     
@@ -275,14 +324,19 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
         @"photo": profile.hasImage ? [profile imageURLWithDimension:120].absoluteString : [NSNull null]
     };
     
-    NSDictionary *response = @{
+    NSMutableDictionary *response = [@{
         @"idToken": user.idToken.tokenString ?: @"",
         @"user": userDict
-    };
+    } mutableCopy];
+    
+    // Add nonce to response if provided
+    if (nonce) {
+        response[@"nonce"] = nonce;
+    }
     
     RCTLogInfo(@"Silent sign-in successful");
     if (self.pendingResolve) {
-        self.pendingResolve(response);
+        self.pendingResolve([response copy]);
     }
     [self clearPendingPromise];
 }
@@ -391,6 +445,111 @@ RCT_EXPORT_METHOD(getTokens:(RCTPromiseResolveBlock)resolve
 #pragma mark - Helper Methods
 
 /**
+ * Validate nonce parameter for security requirements
+ */
+- (NSError *)validateNonce:(NSString *)nonce {
+    if (!nonce || nonce.length == 0) {
+        return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                   code:1001
+                               userInfo:@{NSLocalizedDescriptionKey: @"Nonce cannot be blank"}];
+    }
+    
+    if (nonce.length < 32) {
+        return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                   code:1002
+                               userInfo:@{NSLocalizedDescriptionKey: @"Nonce must be at least 32 characters long for security"}];
+    }
+    
+    if (nonce.length > 255) {
+        return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                   code:1003
+                               userInfo:@{NSLocalizedDescriptionKey: @"Nonce is too long (max 255 characters)"}];
+    }
+    
+    // Validate URL-safe base64 format
+    NSCharacterSet *allowedChars = [NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"];
+    NSCharacterSet *nonceChars = [NSCharacterSet characterSetWithCharactersInString:nonce];
+    
+    if (![allowedChars isSupersetOfSet:nonceChars]) {
+        return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                   code:1004
+                               userInfo:@{NSLocalizedDescriptionKey: @"Nonce must be URL-safe base64 encoded (alphanumeric, -, _ only)"}];
+    }
+    
+    return nil;
+}
+
+/**
+ * Validate nonce in ID token
+ */
+- (NSError *)validateNonceInIdToken:(NSString *)idTokenString expectedNonce:(NSString *)expectedNonce {
+    if (!idTokenString || idTokenString.length == 0) {
+        return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                   code:1005
+                               userInfo:@{NSLocalizedDescriptionKey: @"ID token is empty"}];
+    }
+    
+    @try {
+        // Parse JWT and extract nonce claim
+        NSArray *parts = [idTokenString componentsSeparatedByString:@"."];
+        if (parts.count < 2) {
+            return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                       code:1006
+                                   userInfo:@{NSLocalizedDescriptionKey: @"Invalid ID token format"}];
+        }
+        
+        NSString *payload = parts[1];
+        
+        // Add padding if needed for base64 decoding
+        NSInteger paddingLength = (4 - (payload.length % 4)) % 4;
+        payload = [payload stringByPaddingToLength:payload.length + paddingLength
+                                        withString:@"=" startingAtIndex:0];
+        
+        // Decode the payload (second part)
+        NSData *decodedData = [[NSData alloc] initWithBase64EncodedString:payload 
+                                                                 options:NSDataBase64DecodingIgnoreUnknownCharacters];
+        if (!decodedData) {
+            return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                       code:1007
+                                   userInfo:@{NSLocalizedDescriptionKey: @"Failed to decode ID token payload"}];
+        }
+        
+        NSString *payloadString = [[NSString alloc] initWithData:decodedData encoding:NSUTF8StringEncoding];
+        if (!payloadString) {
+            return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                       code:1008
+                                   userInfo:@{NSLocalizedDescriptionKey: @"Failed to parse ID token payload as UTF-8"}];
+        }
+        
+        NSData *jsonData = [payloadString dataUsingEncoding:NSUTF8StringEncoding];
+        NSError *jsonError = nil;
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&jsonError];
+        
+        if (jsonError || !json) {
+            return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                       code:1009
+                                   userInfo:@{NSLocalizedDescriptionKey: @"Failed to parse ID token JSON"}];
+        }
+        
+        NSString *tokenNonce = json[@"nonce"];
+        RCTLogInfo(@"Expected nonce: %@, Token nonce: %@", expectedNonce, tokenNonce);
+        
+        if (![tokenNonce isEqualToString:expectedNonce]) {
+            return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                       code:1010
+                                   userInfo:@{NSLocalizedDescriptionKey: @"Nonce validation failed: ID token nonce doesn't match request nonce"}];
+        }
+        
+        return nil;
+        
+    } @catch (NSException *exception) {
+        return [NSError errorWithDomain:@"GoogleSigninModernError"
+                                   code:1011
+                               userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Exception during nonce validation: %@", exception.reason]}];
+    }
+}
+
+/**
  * Extract the stable user ID from the ID token's "sub" claim.
  * The "sub" (subject) claim is the stable, unique identifier for the Google user
  * that won't change even if the user changes their email address.
@@ -446,6 +605,7 @@ RCT_EXPORT_METHOD(getTokens:(RCTPromiseResolveBlock)resolve
 - (void)clearAllState {
     [self clearPendingPromise];
     self.webClientId = nil;
+    self.currentNonce = nil;
 }
 
 #pragma mark - Module Lifecycle

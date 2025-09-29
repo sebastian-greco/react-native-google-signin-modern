@@ -54,6 +54,8 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
 		private const val ERROR_MODULE_DESTROYED = "MODULE_DESTROYED"
 		private const val ERROR_NO_USER = "NO_USER"
 		private const val ERROR_TOKEN_REFRESH_ERROR = "TOKEN_REFRESH_ERROR"
+		private const val ERROR_NONCE_ERROR = "NONCE_ERROR"
+		private const val ERROR_NONCE_VALIDATION_ERROR = "NONCE_VALIDATION_ERROR"
 		
 		// Credential types
 		private const val GOOGLE_ID_TOKEN_CREDENTIAL_TYPE = "com.google.android.libraries.identity.googleid.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL"
@@ -96,20 +98,38 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    override fun signIn(promise: Promise) {
-        performSignIn(
-            promise = promise,
-            flowType = SignInFlowType.INTERACTIVE,
-            logMessage = "Sign-in request initiated"
-        )
+    override fun signIn(nonce: String?, promise: Promise) {
+        try {
+            // Validate nonce if provided
+            val validatedNonce = if (nonce != null) validateNonce(nonce) else null
+            
+            performSignIn(
+                promise = promise,
+                flowType = SignInFlowType.INTERACTIVE,
+                logMessage = "Sign-in request initiated",
+                nonce = validatedNonce
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Nonce validation failed", e)
+            promise.reject(ERROR_NONCE_ERROR, "Invalid nonce: ${e.message}", e)
+        }
     }
 
-    override fun signInSilently(promise: Promise) {
-        performSignIn(
-            promise = promise,
-            flowType = SignInFlowType.SILENT,
-            logMessage = "Silent sign-in request initiated"
-        )
+    override fun signInSilently(nonce: String?, promise: Promise) {
+        try {
+            // Validate nonce if provided
+            val validatedNonce = if (nonce != null) validateNonce(nonce) else null
+            
+            performSignIn(
+                promise = promise,
+                flowType = SignInFlowType.SILENT,
+                logMessage = "Silent sign-in request initiated",
+                nonce = validatedNonce
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Nonce validation failed", e)
+            promise.reject(ERROR_NONCE_ERROR, "Invalid nonce: ${e.message}", e)
+        }
     }
 
     /**
@@ -124,7 +144,7 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
     /**
      * Unified sign-in method that handles all flow types
      */
-    private fun performSignIn(promise: Promise, flowType: SignInFlowType, logMessage: String) {
+    private fun performSignIn(promise: Promise, flowType: SignInFlowType, logMessage: String, nonce: String? = null) {
         try {
             Log.d(TAG, logMessage)
             
@@ -157,7 +177,7 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
 
             Log.d(TAG, "Starting ${flowType.name.lowercase(java.util.Locale.ROOT)} flow with authorized accounts")
             // All flows start by checking authorized accounts first
-            performCredentialRequest(filterByAuthorizedAccounts = true, flowType = flowType)
+            performCredentialRequest(filterByAuthorizedAccounts = true, flowType = flowType, nonce = nonce)
 
         } catch (e: Exception) {
             Log.e(TAG, "Exception in ${flowType.name.lowercase(java.util.Locale.ROOT)}", e)
@@ -177,10 +197,53 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
     }
 
     /**
-     * Extract the stable user ID from the ID token's "sub" claim.
-     * The "sub" (subject) claim is the stable, unique identifier for the Google user
-     * that won't change even if the user changes their email address.
+     * Validate nonce parameter for security requirements
      */
+    private fun validateNonce(nonce: String): String {
+        if (nonce.isBlank()) {
+            throw IllegalArgumentException("Nonce cannot be blank")
+        }
+        
+        if (nonce.length < 32) {
+            throw IllegalArgumentException("Nonce must be at least 32 characters long for security")
+        }
+        
+        if (nonce.length > 255) {
+            throw IllegalArgumentException("Nonce is too long (max 255 characters)")
+        }
+        
+        // Ensure URL-safe base64 format (allows alphanumeric, -, _, and =)
+        if (!nonce.matches(Regex("[A-Za-z0-9_-]+"))) {
+            throw IllegalArgumentException("Nonce must be URL-safe base64 encoded (alphanumeric, -, _ only)")
+        }
+        
+        return nonce
+    }
+
+    /**
+     * Extract and validate nonce from ID token
+     */
+    private fun validateNonceInIdToken(idToken: String, expectedNonce: String): Boolean {
+        return try {
+            // JWT tokens have 3 parts separated by dots: header.payload.signature
+            val parts = idToken.split(".")
+            if (parts.size >= 2) {
+                // Decode the payload (second part)
+                val payload = String(Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_PADDING))
+                val json = JSONObject(payload)
+                val tokenNonce = json.optString("nonce", null)
+                
+                Log.d(TAG, "Expected nonce: $expectedNonce, Token nonce: $tokenNonce")
+                tokenNonce == expectedNonce
+            } else {
+                Log.w(TAG, "Invalid ID token format for nonce validation")
+                false
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to validate nonce in ID token: ${e.message}")
+            false
+        }
+    }
     private fun extractUserIdFromToken(idToken: String): String? {
         return try {
             // JWT tokens have 3 parts separated by dots: header.payload.signature
@@ -199,8 +262,16 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    private fun createSignInResponse(credential: GoogleIdTokenCredential): WritableMap {
+    private fun createSignInResponse(credential: GoogleIdTokenCredential, nonce: String? = null): WritableMap {
         val idToken = credential.idToken
+        
+        // Validate nonce if provided
+        if (nonce != null) {
+            if (!validateNonceInIdToken(idToken, nonce)) {
+                throw SecurityException("Nonce validation failed: ID token nonce doesn't match request nonce")
+            }
+        }
+        
         val stableUserId = extractUserIdFromToken(idToken) ?: credential.id
         val user = Arguments.createMap().apply {
             putString("id", stableUserId)
@@ -212,18 +283,28 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         return Arguments.createMap().apply {
             putString("idToken", idToken)
             putMap("user", user)
+            if (nonce != null) {
+                putString("nonce", nonce)
+            }
         }
     }
 
     /**
      * Unified credential request method that handles all flow types
      */
-    private fun performCredentialRequest(filterByAuthorizedAccounts: Boolean, flowType: SignInFlowType) {
+    private fun performCredentialRequest(filterByAuthorizedAccounts: Boolean, flowType: SignInFlowType, nonce: String? = null) {
         val currentActivity = reactApplicationContext.currentActivity ?: return
 
         val googleIdOption = GetGoogleIdOption.Builder()
             .setServerClientId(webClientId!!)
             .setFilterByAuthorizedAccounts(filterByAuthorizedAccounts)
+            .apply {
+                // Add nonce to credential request if provided
+                if (nonce != null) {
+                    setNonce(nonce)
+                    Log.d(TAG, "Adding nonce to credential request")
+                }
+            }
             .build()
 
         val request = GetCredentialRequest.Builder()
@@ -248,7 +329,7 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
                     is GoogleIdTokenCredential -> {
                         Log.d(TAG, "Google ID token credential received (instanceof) for ${flowType.name}")
                         
-                        val response = createResponseForFlowType(credential, flowType)
+                        val response = createResponseForFlowType(credential, flowType, nonce)
                         pendingPromise?.resolve(response)
                         pendingPromise = null
                     }
@@ -258,7 +339,7 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
                             Log.d(TAG, "Google ID token credential received (by type) for ${flowType.name}")
                             try {
                                 val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                                val response = createResponseForFlowType(googleCredential, flowType)
+                                val response = createResponseForFlowType(googleCredential, flowType, nonce)
                                 pendingPromise?.resolve(response)
                                 pendingPromise = null
                             } catch (parseError: Exception) {
@@ -276,7 +357,11 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
 
             } catch (e: GetCredentialException) {
                 Log.e(TAG, "GetCredentialException for ${flowType.name}: ${e.type} - ${e.message}")
-                handleCredentialException(e, filterByAuthorizedAccounts, flowType)
+                handleCredentialException(e, filterByAuthorizedAccounts, flowType, nonce)
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Security exception (nonce validation failed) for ${flowType.name}", e)
+                val errorCode = ERROR_NONCE_VALIDATION_ERROR
+                clearPendingPromiseWithError(errorCode, "Nonce validation failed: ${e.message}")
             } catch (e: Exception) {
                 Log.e(TAG, "Exception in performCredentialRequest for ${flowType.name}", e)
                 val errorCode = if (flowType == SignInFlowType.TOKEN_REFRESH) ERROR_TOKEN_REFRESH_ERROR else ERROR_SIGN_IN_ERROR
@@ -288,7 +373,7 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
     /**
      * Create appropriate response based on flow type
      */
-    private fun createResponseForFlowType(credential: GoogleIdTokenCredential, flowType: SignInFlowType): WritableMap {
+    private fun createResponseForFlowType(credential: GoogleIdTokenCredential, flowType: SignInFlowType, nonce: String? = null): WritableMap {
         return when (flowType) {
             SignInFlowType.TOKEN_REFRESH -> {
                 // For token refresh, return tokens format
@@ -301,7 +386,7 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
             }
             else -> {
                 // For sign-in flows, return user info format
-                createSignInResponse(credential)
+                createSignInResponse(credential, nonce)
             }
         }
     }
@@ -309,13 +394,13 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
     /**
      * Handle credential exceptions based on flow type
      */
-    private fun handleCredentialException(e: GetCredentialException, filterByAuthorizedAccounts: Boolean, flowType: SignInFlowType) {
+    private fun handleCredentialException(e: GetCredentialException, filterByAuthorizedAccounts: Boolean, flowType: SignInFlowType, nonce: String? = null) {
         when (flowType) {
             SignInFlowType.INTERACTIVE -> {
                 // Interactive sign-in can retry with all accounts if authorized accounts fail
                 if (filterByAuthorizedAccounts && e.type == NO_CREDENTIAL_EXCEPTION_TYPE) {
                     Log.d(TAG, "No authorized accounts found, retrying with all accounts")
-                    performCredentialRequest(filterByAuthorizedAccounts = false, flowType = flowType)
+                    performCredentialRequest(filterByAuthorizedAccounts = false, flowType = flowType, nonce = nonce)
                 } else {
                     handleNoAccountsError(e)
                 }

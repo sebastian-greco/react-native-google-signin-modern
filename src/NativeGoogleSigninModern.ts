@@ -8,6 +8,7 @@ export type GoogleSignInResult = Readonly<{
     email: string;
     photo?: string | null;
   }>;
+  nonce?: string | null;
 }>;
 
 export type GoogleSignInTokens = Readonly<{
@@ -18,8 +19,8 @@ export type GoogleSignInTokens = Readonly<{
 export interface Spec extends TurboModule {
   configure(webClientId: string): Promise<void>;
   isPlayServicesAvailable(): Promise<boolean>;
-  signIn(): Promise<GoogleSignInResult>;
-  signInSilently(): Promise<GoogleSignInResult>;
+  signIn(nonce?: string | null): Promise<GoogleSignInResult>;
+  signInSilently(nonce?: string | null): Promise<GoogleSignInResult>;
   getTokens(): Promise<GoogleSignInTokens>;
   signOut(): Promise<void>;
   isSignedIn(): Promise<boolean>;

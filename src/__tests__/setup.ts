@@ -44,13 +44,14 @@ expect.extend({
       typeof received.user.id === 'string' &&
       typeof received.user.email === 'string' &&
       (received.user.name === null || typeof received.user.name === 'string') &&
-      (received.user.photo === null || typeof received.user.photo === 'string');
+      (received.user.photo === null || typeof received.user.photo === 'string') &&
+      (received.nonce === null || received.nonce === undefined || typeof received.nonce === 'string');
 
     return {
       message: () =>
         pass
           ? `expected ${JSON.stringify(received)} not to be a valid GoogleSignInResult`
-          : `expected ${JSON.stringify(received)} to be a valid GoogleSignInResult with { idToken: string, user: { id: string, email: string, name: string | null, photo: string | null } }`,
+          : `expected ${JSON.stringify(received)} to be a valid GoogleSignInResult with { idToken: string, user: { id: string, email: string, name: string | null, photo: string | null }, nonce?: string | null }`,
       pass,
     };
   },
