@@ -52,7 +52,7 @@ const mockNativeModule = {
     return mockState.isPlayServicesAvailable;
   }),
 
-  signIn: jest.fn(async (): Promise<GoogleSignInResult> => {
+  signIn: jest.fn(async (nonce?: string | null): Promise<GoogleSignInResult> => {
     if (mockState.shouldThrow) {
       throw mockState.throwError || new Error('Sign in failed');
     }
@@ -97,6 +97,7 @@ const mockNativeModule = {
       return {
         idToken: 'mock-id-token-' + Date.now() + '-' + Math.random(),
         user,
+        nonce: nonce || null,
       };
     } finally {
       // Clear sign in progress flag
@@ -104,7 +105,7 @@ const mockNativeModule = {
     }
   }),
 
-  signInSilently: jest.fn(async (): Promise<GoogleSignInResult> => {
+  signInSilently: jest.fn(async (nonce?: string | null): Promise<GoogleSignInResult> => {
     if (mockState.shouldThrow) {
       throw mockState.throwError || new Error('Silent sign in failed');
     }
@@ -139,6 +140,7 @@ const mockNativeModule = {
       return {
         idToken: 'mock-silent-id-token-' + Date.now() + '-' + Math.random(),
         user: mockState.currentUser,
+        nonce: nonce || null,
       };
     } finally {
       // Clear sign in progress flag
