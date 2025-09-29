@@ -37,6 +37,8 @@
 @property (nonatomic, copy) void (^pendingResolve)(id result);
 @property (nonatomic, copy) void (^pendingReject)(NSString *code, NSString *message, NSError *error);
 @property (nonatomic, assign) BOOL signInInProgress;
+@property (nonatomic, strong) NSArray<NSString *> *configuredScopes;
+@property (nonatomic, assign) BOOL offlineAccess;
 @end
 
 @implementation GoogleSigninModern
@@ -64,6 +66,8 @@ static NSString * const ERROR_TOKEN_REFRESH_ERROR = @"TOKEN_REFRESH_ERROR";
 }
 
 RCT_EXPORT_METHOD(configure:(NSString *)webClientId
+                  scopes:(NSArray<NSString *> *)scopes
+                  offlineAccess:(BOOL)offlineAccess
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     @try {
@@ -77,6 +81,16 @@ RCT_EXPORT_METHOD(configure:(NSString *)webClientId
             RCTLogWarn(@"webClientId doesn't match expected format: *.apps.googleusercontent.com");
         }
         
+        // Store scopes configuration
+        if (scopes && scopes.count > 0) {
+            self.configuredScopes = scopes;
+        } else {
+            self.configuredScopes = @[@"openid", @"email", @"profile"];
+        }
+        
+        // Store offline access configuration
+        self.offlineAccess = offlineAccess;
+        
 #if HAS_GOOGLE_SIGNIN
         // Configure Google Sign-In
         GIDConfiguration *config = [[GIDConfiguration alloc] initWithClientID:webClientId];
@@ -85,6 +99,8 @@ RCT_EXPORT_METHOD(configure:(NSString *)webClientId
         self.webClientId = webClientId;
         
         RCTLogInfo(@"Google Sign-In configured successfully");
+        RCTLogInfo(@"Configured scopes: %@", [self.configuredScopes componentsJoinedByString:@", "]);
+        RCTLogInfo(@"Offline access: %@", offlineAccess ? @"YES" : @"NO");
         resolve(nil);
 #else
         reject(ERROR_CONFIGURE_ERROR, @"Google Sign-In SDK not found. Please install GoogleSignIn pod.", nil);
@@ -218,8 +234,65 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
         return;
     }
     
-    // Create response matching Android format
     GIDGoogleUser *user = result.user;
+    
+    // Check if additional scopes need to be requested
+    if (self.configuredScopes && self.configuredScopes.count > 0) {
+        // Filter out basic scopes to get additional scopes
+        NSArray *basicScopes = @[@"openid", @"email", @"profile"];
+        NSMutableArray *additionalScopes = [NSMutableArray array];
+        
+        for (NSString *scope in self.configuredScopes) {
+            if (![basicScopes containsObject:scope]) {
+                [additionalScopes addObject:scope];
+            }
+        }
+        
+        // If there are additional scopes to request, use addScopes
+        if (additionalScopes.count > 0) {
+            RCTLogInfo(@"Requesting additional scopes: %@", [additionalScopes componentsJoinedByString:@", "]);
+            
+            UIViewController *rootViewController = [self findPresentingViewController];
+            if (!rootViewController) {
+                [self clearPendingPromiseWithError:ERROR_SIGN_IN_ERROR message:@"No presenting view controller found for scope authorization"];
+                return;
+            }
+            
+            [user addScopes:additionalScopes
+     presentingViewController:rootViewController
+                   completion:^(GIDSignInResult *scopeResult, NSError *scopeError) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self handleScopeAuthorizationResult:scopeResult error:scopeError originalUser:user];
+                });
+            }];
+            return;
+        }
+    }
+    
+    // No additional scopes needed, complete sign-in
+    [self completeSignInWithUser:user];
+}
+
+- (void)handleScopeAuthorizationResult:(GIDSignInResult *)result error:(NSError *)error originalUser:(GIDGoogleUser *)originalUser {
+    if (error) {
+        RCTLogError(@"Scope authorization error: %@", error.localizedDescription);
+        
+        if (error.code == kGIDSignInErrorCodeCanceled) {
+            [self clearPendingPromiseWithError:ERROR_USER_CANCELLED message:@"User cancelled scope authorization"];
+        } else {
+            NSString *errorMessage = [NSString stringWithFormat:@"Scope authorization failed: %@", error.localizedDescription];
+            [self clearPendingPromiseWithError:ERROR_SIGN_IN_ERROR message:errorMessage];
+        }
+        return;
+    }
+    
+    // Use the updated user with new scopes, fallback to original user
+    GIDGoogleUser *finalUser = result.user ?: originalUser;
+    [self completeSignInWithUser:finalUser];
+}
+
+- (void)completeSignInWithUser:(GIDGoogleUser *)user {
+    // Create response matching Android format
     GIDProfileData *profile = user.profile;
     
     // Extract stable user ID from ID token's "sub" claim as fallback
@@ -234,10 +307,13 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
     
     NSDictionary *response = @{
         @"idToken": user.idToken.tokenString ?: @"",
-        @"user": userDict
+        @"user": userDict,
+        @"scopes": self.configuredScopes ?: @[@"openid", @"email", @"profile"],
+        @"accessToken": user.accessToken.tokenString ?: [NSNull null],
+        @"serverAuthCode": self.offlineAccess && user.serverAuthCode ? user.serverAuthCode : [NSNull null]
     };
     
-    RCTLogInfo(@"Google Sign-In successful");
+    RCTLogInfo(@"Google Sign-In successful with scopes: %@", [self.configuredScopes componentsJoinedByString:@", "]);
     if (self.pendingResolve) {
         self.pendingResolve(response);
     }
@@ -277,7 +353,10 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
     
     NSDictionary *response = @{
         @"idToken": user.idToken.tokenString ?: @"",
-        @"user": userDict
+        @"user": userDict,
+        @"scopes": self.configuredScopes ?: @[@"openid", @"email", @"profile"],
+        @"accessToken": user.accessToken.tokenString ?: [NSNull null],
+        @"serverAuthCode": self.offlineAccess && user.serverAuthCode ? user.serverAuthCode : [NSNull null]
     };
     
     RCTLogInfo(@"Silent sign-in successful");
@@ -368,7 +447,8 @@ RCT_EXPORT_METHOD(getTokens:(RCTPromiseResolveBlock)resolve
                 
                 NSDictionary *tokens = @{
                     @"idToken": user.idToken.tokenString ?: @"",
-                    @"accessToken": user.accessToken.tokenString ?: @""
+                    @"accessToken": user.accessToken.tokenString ?: @"",
+                    @"scopes": self.configuredScopes ?: @[@"openid", @"email", @"profile"]
                 };
                 
                 RCTLogInfo(@"Token refresh successful");

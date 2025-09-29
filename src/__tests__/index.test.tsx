@@ -464,4 +464,66 @@ describe('GoogleSignInModule', () => {
       expectMockCallCounts({ configure: 2 });
     });
   });
+
+  describe('OAuth Scopes Functionality', () => {
+    it('should configure with custom scopes', async () => {
+      const config = createMockConfig({
+        scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/calendar']
+      });
+      
+      await GoogleSignInModule.configure(config);
+      
+      expectMockCallCounts({ configure: 1 });
+      expectMockCalledWith('configure', config.webClientId, config.scopes, null);
+    });
+
+    it('should configure with offline access enabled', async () => {
+      const config = createMockConfig({
+        offlineAccess: true
+      });
+      
+      await GoogleSignInModule.configure(config);
+      
+      expectMockCallCounts({ configure: 1 });
+      expectMockCalledWith('configure', config.webClientId, null, true);
+    });
+
+    it('should return scopes in sign-in response', async () => {
+      const config = createMockConfig({
+        scopes: ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/drive.file']
+      });
+      
+      await GoogleSignInModule.configure(config);
+      const result = await GoogleSignInModule.signIn();
+      
+      expect(result).toHaveProperty('scopes');
+      expect(Array.isArray(result.scopes)).toBe(true);
+      expect(result.scopes).toContain('openid');
+      expect(result.scopes).toContain('email'); 
+      expect(result.scopes).toContain('profile');
+    });
+
+    it('should return access token information when available', async () => {
+      const config = createMockConfig();
+      
+      await GoogleSignInModule.configure(config);
+      const result = await GoogleSignInModule.signIn();
+      
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('serverAuthCode');
+    });
+
+    it('should return scopes in getTokens response', async () => {
+      const config = createMockConfig();
+      
+      await GoogleSignInModule.configure(config);
+      // Need to sign in first before getting tokens
+      await GoogleSignInModule.signIn();
+      const tokens = await GoogleSignInModule.getTokens();
+      
+      expect(tokens).toHaveProperty('scopes');
+      expect(Array.isArray(tokens.scopes)).toBe(true);
+      expect(tokens.scopes.length).toBeGreaterThan(0);
+    });
+  });
 });
