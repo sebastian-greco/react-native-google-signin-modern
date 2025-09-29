@@ -18,6 +18,8 @@ interface MockState {
   throwError?: Error;
   signInDelay?: number;
   signInInProgress: boolean;
+  configuredScopes?: string[];
+  offlineAccess?: boolean;
 }
 
 const defaultMockState: MockState = {
@@ -33,7 +35,11 @@ let mockState = { ...defaultMockState };
 
 // Mock implementation
 const mockNativeModule = {
-  configure: jest.fn(async (webClientId: string): Promise<void> => {
+  configure: jest.fn(async (
+    webClientId: string,
+    scopes?: string[] | null,
+    offlineAccess?: boolean | null
+  ): Promise<void> => {
     if (mockState.shouldThrow) {
       throw mockState.throwError || new Error('Configure failed');
     }
@@ -43,6 +49,8 @@ const mockNativeModule = {
     }
 
     mockState.isConfigured = true;
+    mockState.configuredScopes = scopes || ['openid', 'email', 'profile'];
+    mockState.offlineAccess = offlineAccess || false;
   }),
 
   isPlayServicesAvailable: jest.fn(async (): Promise<boolean> => {
@@ -97,6 +105,9 @@ const mockNativeModule = {
       return {
         idToken: 'mock-id-token-' + Date.now() + '-' + Math.random(),
         user,
+        scopes: mockState.configuredScopes || ['openid', 'email', 'profile'],
+        accessToken: 'mock-access-token-' + Date.now() + '-' + Math.random(),
+        serverAuthCode: mockState.offlineAccess ? 'mock-server-auth-code' : undefined,
       };
     } finally {
       // Clear sign in progress flag
@@ -139,6 +150,9 @@ const mockNativeModule = {
       return {
         idToken: 'mock-silent-id-token-' + Date.now() + '-' + Math.random(),
         user: mockState.currentUser,
+        scopes: mockState.configuredScopes || ['openid', 'email', 'profile'],
+        accessToken: 'mock-access-token-' + Date.now() + '-' + Math.random(),
+        serverAuthCode: mockState.offlineAccess ? 'mock-server-auth-code' : undefined,
       };
     } finally {
       // Clear sign in progress flag
@@ -164,6 +178,7 @@ const mockNativeModule = {
     return {
       idToken: 'mock-fresh-id-token-' + Date.now() + '-' + Math.random(),
       accessToken: 'mock-access-token-' + Date.now() + '-' + Math.random(),
+      scopes: mockState.configuredScopes || ['openid', 'email', 'profile'],
     };
   }),
 

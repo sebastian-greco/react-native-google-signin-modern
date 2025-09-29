@@ -51,7 +51,7 @@ describe('iOS Native Module Tests', () => {
       await GoogleSignInModule.configure(config);
 
       expectMockCallCounts({ configure: 1 });
-      expectMockCalledWith('configure', config.webClientId);
+      expectMockCalledWith('configure', config.webClientId, null, null);
       expect(mockGoogleSignIn.getState().isConfigured).toBe(true);
     });
 

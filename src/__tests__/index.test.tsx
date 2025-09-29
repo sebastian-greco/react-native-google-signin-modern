@@ -68,7 +68,7 @@ describe('GoogleSignInModule', () => {
       ).resolves.toBeUndefined();
 
       expectMockCallCounts({ configure: 1 });
-      expectMockCalledWith('configure', config.webClientId);
+      expectMockCalledWith('configure', config.webClientId, null, null);
     });
 
     it('should throw error for invalid configuration', async () => {
@@ -455,11 +455,11 @@ describe('GoogleSignInModule', () => {
 
       // Configure with first config
       await GoogleSignInModule.configure(firstConfig);
-      expectMockCalledWith('configure', firstConfig.webClientId);
+      expectMockCalledWith('configure', firstConfig.webClientId, null, null);
 
       // Reconfigure with second config
       await GoogleSignInModule.configure(secondConfig);
-      expectMockCalledWith('configure', secondConfig.webClientId);
+      expectMockCalledWith('configure', secondConfig.webClientId, null, null);
 
       expectMockCallCounts({ configure: 2 });
     });

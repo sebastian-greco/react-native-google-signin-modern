@@ -8,15 +8,21 @@ export interface GoogleSignInResult {
     email: string;
     photo: string | null;
   };
+  scopes: string[];
+  accessToken?: string;
+  serverAuthCode?: string;
 }
 
 export interface GoogleSignInTokens {
   idToken: string;
   accessToken: string;
+  scopes: string[];
 }
 
 export interface GoogleSignInConfig {
   webClientId: string;
+  scopes?: string[];
+  offlineAccess?: boolean;
 }
 
 /**
@@ -35,10 +41,14 @@ class GoogleSignIn {
   }
 
   /**
-   * Configure Google Sign-In with Web Client ID
+   * Configure Google Sign-In with Web Client ID and optional scopes
    */
   async configure(config: GoogleSignInConfig): Promise<void> {
-    await GoogleSigninModern.configure(config.webClientId);
+    await GoogleSigninModern.configure(
+      config.webClientId,
+      config.scopes || null,
+      config.offlineAccess || null
+    );
     this.isConfigured = true;
   }
 
@@ -67,6 +77,9 @@ class GoogleSignIn {
         email: nativeResult.user.email,
         photo: nativeResult.user.photo ?? null,
       },
+      scopes: nativeResult.scopes || [],
+      accessToken: nativeResult.accessToken,
+      serverAuthCode: nativeResult.serverAuthCode,
     };
   }
 
@@ -89,6 +102,9 @@ class GoogleSignIn {
         email: nativeResult.user.email,
         photo: nativeResult.user.photo ?? null,
       },
+      scopes: nativeResult.scopes || [],
+      accessToken: nativeResult.accessToken,
+      serverAuthCode: nativeResult.serverAuthCode,
     };
   }
 
