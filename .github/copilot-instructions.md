@@ -146,6 +146,53 @@ expect(tokens).toBeGoogleSignInTokens();
 
 ---
 
+## 🧪 Android Native Testing Guidelines
+
+### Dependency Management for Testing
+- **Version Alignment**: Always align coroutines-test version with coroutines-android version to prevent binary incompatibilities
+- **Mockito Consolidation**: For Robolectric/JVM tests, use only `mockito-inline` (+ mockito-kotlin). Avoid mixing `mockito-core`, `mockito-android`, and `mockito-inline` which can cause classpath conflicts
+- **Stay Current**: Use latest stable versions of testing dependencies (check current versions before adding)
+
+### Static Mocking Best Practices
+- **Lifecycle Management**: Static mocks (mockStatic) must be properly scoped with `.use {}` blocks or managed at class level with proper cleanup in `@After`
+- **Per-Test Mocking**: Prefer per-test static mocking over setup-level mocking to avoid test pollution
+- **Verification Completeness**: When testing error scenarios, verify both the method call AND the expected promise rejection with correct error codes
+
+### Test Structure & Quality
+- **Test-Assertion Alignment**: Ensure test names match what's actually being verified. If testing rejection behavior, verify the reject() call with expected parameters
+- **Avoid Code Duplication**: Extract common test setup patterns into helper methods when used across multiple tests
+- **Helper Method Signatures**: Make helper method signatures as specific as possible (avoid unnecessary generics)
+- **Mock API Accuracy**: Verify mocked method signatures match the actual API being used (e.g., AndroidX CredentialManager methods)
+
+### Build Configuration
+- **Coverage Tools**: If mentioning coverage commands like `jacocoTestReport` in documentation, ensure the corresponding Gradle plugin and tasks are configured
+- **Test Dependencies**: Include all necessary test dependencies for the testing patterns being used
+
+### Security & False Positives
+- **Test Data**: Hardcoded test tokens/keys in test files are acceptable and should be documented as test data to avoid security scanner false positives
+- **Use Clear Naming**: Prefix test constants with `TEST_` or `MOCK_` to clearly indicate their purpose
+
+### Examples to Follow
+```kotlin
+// ✅ Good: Proper static mock lifecycle
+mockStatic(Arguments::class.java).use { mockedArguments ->
+    // test implementation
+}
+
+// ✅ Good: Complete error verification  
+verify(mockPromise).reject(
+    eq("EXPECTED_ERROR_CODE"),
+    contains("expected message")
+)
+
+// ❌ Avoid: Setup-level static mocking that closes immediately
+@BeforeEach
+fun setup() {
+    mockStatic(SomeClass::class.java).use { /* closes before test runs */ }
+}
+
+---
+
 ## 📚 Dependencies & Libraries
 
 ### Core Dependencies
@@ -298,6 +345,15 @@ When writing or modifying code in this repository, agents MUST:
 3. **Follow async patterns** in test setup - use `await commonTestSetup()` in `beforeEach` hooks
 4. **Test error scenarios** with proper error codes using `expectErrorCode` utility
 5. **Use custom matchers** like `toBeGoogleSignInResult()`, `toBeGoogleSignInTokens()` for domain-specific assertions
+
+### Android Native Testing Requirements
+When implementing Android native tests, agents MUST:
+
+1. **Verify dependency compatibility** - check version alignment between related dependencies
+2. **Use proper mock lifecycle management** - static mocks must be properly scoped
+3. **Include complete test verifications** - test both method calls and expected outcomes
+4. **Extract common patterns** - create helper methods for repeated setup/assertion logic
+5. **Match API signatures** - ensure mocked methods match actual implementations
 
 ### Test Structure Guidelines
 - Place tests in appropriate files: `index.test.tsx` (API tests), `error-scenarios.test.tsx` (error handling), or `native-module.test.tsx` (mock infrastructure)
