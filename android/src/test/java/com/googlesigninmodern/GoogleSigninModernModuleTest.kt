@@ -16,11 +16,13 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.Assert.assertEquals
 import org.mockito.Mock
 import org.mockito.MockedStatic
 import org.mockito.Mockito.*
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doNothing
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.robolectric.RobolectricTestRunner
@@ -86,9 +88,9 @@ class GoogleSigninModernModuleTest {
     }
 
     private fun setupWritableMapMock() {
-        // Setup WritableMap mock for method chaining
-        whenever(mockWritableMap.putString(any<String>(), any<String?>())).thenReturn(mockWritableMap)
-        whenever(mockWritableMap.putMap(any<String>(), any<WritableMap>())).thenReturn(mockWritableMap)
+        // Setup WritableMap mock for method chaining (putString and putMap return Unit, not WritableMap)
+        doNothing().whenever(mockWritableMap).putString(any<String>(), any<String?>())
+        doNothing().whenever(mockWritableMap).putMap(any<String>(), any<WritableMap>())
     }
 
     // ========================================
@@ -107,7 +109,7 @@ class GoogleSigninModernModuleTest {
 
             // Then
             verify(mockPromise).resolve(null)
-            verify(CredentialManager::class.java).create(mockReactContext)
+            verify { CredentialManager.create(mockReactContext) }
         }
     }
 
@@ -509,7 +511,7 @@ class GoogleSigninModernModuleTest {
         val name = module.name
 
         // Then
-        assert(name == "GoogleSigninModern")
+        assertEquals("GoogleSigninModern", name)
     }
 
     // ========================================
