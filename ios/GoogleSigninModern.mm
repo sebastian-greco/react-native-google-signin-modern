@@ -39,6 +39,10 @@
 @property (nonatomic, assign) BOOL signInInProgress;
 @property (nonatomic, strong) NSArray<NSString *> *configuredScopes;
 @property (nonatomic, assign) BOOL offlineAccess;
+
+- (UIViewController *)findPresentingViewController;
+- (void)handleScopeAuthorizationResult:(GIDSignInResult *)result error:(NSError *)error originalUser:(GIDGoogleUser *)originalUser;
+- (void)completeSignInWithUser:(GIDGoogleUser *)user;
 @end
 
 @implementation GoogleSigninModern
@@ -67,7 +71,7 @@ static NSString * const ERROR_TOKEN_REFRESH_ERROR = @"TOKEN_REFRESH_ERROR";
 
 RCT_EXPORT_METHOD(configure:(NSString *)webClientId
                   scopes:(NSArray<NSString *> *)scopes
-                  offlineAccess:(BOOL)offlineAccess
+                  offlineAccess:(NSNumber *)offlineAccess
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     @try {
@@ -89,7 +93,7 @@ RCT_EXPORT_METHOD(configure:(NSString *)webClientId
         }
         
         // Store offline access configuration
-        self.offlineAccess = offlineAccess;
+        self.offlineAccess = offlineAccess ? [offlineAccess boolValue] : NO;
         
 #if HAS_GOOGLE_SIGNIN
         // Configure Google Sign-In
@@ -261,8 +265,14 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
             [user addScopes:additionalScopes
      presentingViewController:rootViewController
                    completion:^(GIDSignInResult *scopeResult, NSError *scopeError) {
+                __weak typeof(self) weakSelf = self;
+                __weak typeof(user) weakUser = user;
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    [self handleScopeAuthorizationResult:scopeResult error:scopeError originalUser:user];
+                    __strong typeof(weakSelf) strongSelf = weakSelf;
+                    __strong typeof(weakUser) strongUser = weakUser;
+                    if (strongSelf && strongUser) {
+                        [strongSelf handleScopeAuthorizationResult:scopeResult error:scopeError originalUser:strongUser];
+                    }
                 });
             }];
             return;
@@ -310,7 +320,7 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
         @"user": userDict,
         @"scopes": self.configuredScopes ?: @[@"openid", @"email", @"profile"],
         @"accessToken": user.accessToken.tokenString ?: [NSNull null],
-        @"serverAuthCode": self.offlineAccess && user.serverAuthCode ? user.serverAuthCode : [NSNull null]
+        @"serverAuthCode": [NSNull null] // Server auth code handled through sign-in flow
     };
     
     RCTLogInfo(@"Google Sign-In successful with scopes: %@", [self.configuredScopes componentsJoinedByString:@", "]);
@@ -356,7 +366,7 @@ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
         @"user": userDict,
         @"scopes": self.configuredScopes ?: @[@"openid", @"email", @"profile"],
         @"accessToken": user.accessToken.tokenString ?: [NSNull null],
-        @"serverAuthCode": self.offlineAccess && user.serverAuthCode ? user.serverAuthCode : [NSNull null]
+        @"serverAuthCode": [NSNull null] // Server auth code handled through sign-in flow
     };
     
     RCTLogInfo(@"Silent sign-in successful");
@@ -536,6 +546,16 @@ RCT_EXPORT_METHOD(getTokens:(RCTPromiseResolveBlock)resolve
         self.pendingReject(ERROR_MODULE_DESTROYED, @"Module was destroyed", nil);
     }
     [self clearAllState];
+}
+
+#pragma mark - Helper Methods
+
+- (UIViewController *)findPresentingViewController {
+    UIViewController *rootViewController = RCTKeyWindow().rootViewController;
+    while (rootViewController.presentedViewController) {
+        rootViewController = rootViewController.presentedViewController;
+    }
+    return rootViewController;
 }
 
 #pragma mark - TurboModule
