@@ -39,6 +39,9 @@ export const createMockSignInResult = (
   const id = getUniqueId();
   return {
     idToken: `mock-id-token-${id}-${Date.now()}`,
+    scopes: ['openid', 'email', 'profile'],
+    accessToken: `mock-access-token-${id}-${Date.now()}`,
+    serverAuthCode: undefined,
     user: createMockUser(userOverrides),
     ...resultOverrides,
   };
@@ -55,6 +58,7 @@ export const createMockTokens = (
   return {
     idToken: `mock-id-token-${id}-${timestamp}`,
     accessToken: `mock-access-token-${id}-${timestamp}`,
+    scopes: ['openid', 'email', 'profile'],
     ...overrides,
   };
 };

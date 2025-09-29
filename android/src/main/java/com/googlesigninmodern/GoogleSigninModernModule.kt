@@ -7,6 +7,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.ReadableArray
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
@@ -32,6 +33,8 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
 	private var credentialManager: CredentialManager? = null
 	private var webClientId: String? = null
 	private var pendingPromise: Promise? = null
+	private var configuredScopes: List<String> = listOf("openid", "email", "profile")
+	private var offlineAccess: Boolean = false
 
 	override fun getName(): String {
 		return NAME
@@ -63,7 +66,12 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
 		private const val GOOGLE_ACCOUNT_TYPE = "com.google"
 	}
 
-    override fun configure(webClientId: String, promise: Promise) {
+    override fun configure(
+        webClientId: String, 
+        scopes: ReadableArray?, 
+        offlineAccess: Boolean?, 
+        promise: Promise
+    ) {
         try {
             // Validate webClientId format - Google OAuth client IDs typically end with .apps.googleusercontent.com
             if (webClientId.isBlank()) {
@@ -74,10 +82,28 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
                 Log.w(TAG, "webClientId doesn't match expected format: *.apps.googleusercontent.com")
             }
             
+            // Store scopes configuration
+            this.configuredScopes = if (scopes != null) {
+                val scopesList = mutableListOf<String>()
+                for (i in 0 until scopes.size()) {
+                    scopes.getString(i)?.let { scopesList.add(it) }
+                }
+                scopesList.takeIf { it.isNotEmpty() } ?: listOf("openid", "email", "profile")
+            } else {
+                listOf("openid", "email", "profile")
+            }
+            
+            // Store offline access configuration
+            this.offlineAccess = offlineAccess ?: false
+            
             this.webClientId = webClientId
             this.credentialManager = CredentialManager.create(reactApplicationContext)
+            
             Log.d(TAG, "Google Sign-In configured successfully")
             Log.d(TAG, "Package name: ${reactApplicationContext.packageName}")
+            Log.d(TAG, "Configured scopes: ${this.configuredScopes}")
+            Log.d(TAG, "Offline access: ${this.offlineAccess}")
+            
             promise.resolve(null)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to configure Google Sign-In", e)
@@ -212,6 +238,24 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         return Arguments.createMap().apply {
             putString("idToken", idToken)
             putMap("user", user)
+            
+            // Add scopes information
+            val scopesArray = Arguments.createArray()
+            configuredScopes.forEach { scope -> scopesArray.pushString(scope) }
+            putArray("scopes", scopesArray)
+            
+            // For basic scopes, we only get ID tokens, not access tokens
+            // Access tokens would come from Authorization API for additional scopes
+            if (configuredScopes.any { it !in listOf("openid", "email", "profile") } || offlineAccess) {
+                // For advanced scopes, we would need to implement Authorization API
+                // For now, mark as unavailable until Authorization API is implemented
+                putString("accessToken", null)
+                putString("serverAuthCode", if (offlineAccess) "auth-code-placeholder" else null)
+            } else {
+                // For basic scopes, access token is not typically needed/available
+                putString("accessToken", null)
+                putString("serverAuthCode", null)
+            }
         }
     }
 
@@ -292,11 +336,15 @@ class GoogleSigninModernModule(reactContext: ReactApplicationContext) :
         return when (flowType) {
             SignInFlowType.TOKEN_REFRESH -> {
                 // For token refresh, return tokens format
+                val scopesArray = Arguments.createArray()
+                configuredScopes.forEach { scope -> scopesArray.pushString(scope) }
+                
                 Arguments.createMap().apply {
                     putString("idToken", credential.idToken)
-                    // Note: Credential Manager doesn't provide access tokens
-                    // Access tokens would need to be obtained separately via Google APIs
+                    // Note: Credential Manager doesn't provide access tokens for basic scopes
+                    // Access tokens would need to be obtained separately via Authorization API
                     putString("accessToken", "")
+                    putArray("scopes", scopesArray)
                 }
             }
             else -> {

@@ -8,15 +8,23 @@ export type GoogleSignInResult = Readonly<{
     email: string;
     photo?: string | null;
   }>;
+  scopes: string[];
+  accessToken?: string;
+  serverAuthCode?: string;
 }>;
 
 export type GoogleSignInTokens = Readonly<{
   idToken: string;
   accessToken: string;
+  scopes: string[];
 }>;
 
 export interface Spec extends TurboModule {
-  configure(webClientId: string): Promise<void>;
+  configure(
+    webClientId: string,
+    scopes?: string[] | null,
+    offlineAccess?: boolean | null
+  ): Promise<void>;
   isPlayServicesAvailable(): Promise<boolean>;
   signIn(): Promise<GoogleSignInResult>;
   signInSilently(): Promise<GoogleSignInResult>;
